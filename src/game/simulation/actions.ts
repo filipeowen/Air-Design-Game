@@ -1,3 +1,4 @@
+import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
 import { calculateAircraftDesign } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
 import { createProductionLine } from "@/game/factories/process";
@@ -49,6 +50,7 @@ export function startPlayerResearch(
 
 export function sanitizeAircraftDesignInput(input: AircraftDesignInput, unlockedTechnologyIds: string[]): AircraftDesignInput {
   const unlocked = new Set(unlockedTechnologyIds);
+  const category = AIRCRAFT_CATEGORIES[input.category];
   const engineType =
     input.engineType === "advanced-turbofan" && !unlocked.has("advanced-turbofans")
       ? unlocked.has("high-bypass-turbofans")
@@ -87,12 +89,54 @@ export function sanitizeAircraftDesignInput(input: AircraftDesignInput, unlocked
 
   return {
     ...input,
+    passengerCapacity: clampToStep(input.passengerCapacity, category.capacityRange[0], category.capacityRange[1], 1),
+    rangeNm: clampToStep(input.rangeNm, category.rangeRangeNm[0], category.rangeRangeNm[1], 50),
+    fuselageLengthM: clamp(input.fuselageLengthM, airframeEnvelope(input.category).fuselageLength[0], airframeEnvelope(input.category).fuselageLength[1]),
+    fuselageWidthM: clamp(input.fuselageWidthM, airframeEnvelope(input.category).fuselageWidth[0], airframeEnvelope(input.category).fuselageWidth[1]),
+    wingAreaM2: clampToStep(input.wingAreaM2, airframeEnvelope(input.category).wingArea[0], airframeEnvelope(input.category).wingArea[1], 1),
     engineType,
     structuralMaterial,
     avionicsPackage,
     landingGear,
     technologyPackage: input.technologyPackage.filter((technologyId) => unlocked.has(technologyId))
   };
+}
+
+function airframeEnvelope(category: AircraftCategory): {
+  fuselageLength: [number, number];
+  fuselageWidth: [number, number];
+  wingArea: [number, number];
+} {
+  if (category === "regional-jet") {
+    return {
+      fuselageLength: [21, 33],
+      fuselageWidth: [2.5, 3.4],
+      wingArea: [52, 92]
+    };
+  }
+
+  if (category === "narrow-body") {
+    return {
+      fuselageLength: [31, 47],
+      fuselageWidth: [3.3, 4.2],
+      wingArea: [95, 165]
+    };
+  }
+
+  return {
+    fuselageLength: [48, 76],
+    fuselageWidth: [5, 6.8],
+    wingArea: [245, 390]
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampToStep(value: number, min: number, max: number, step: number): number {
+  const clamped = clamp(value, min, max);
+  return Math.round(clamped / step) * step;
 }
 
 export function updatePlayerProgram(

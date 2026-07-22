@@ -127,6 +127,7 @@ export function Dashboard() {
     [gameState, player]
   );
   const backlog = playerOrders.reduce((sum, order) => sum + Math.max(0, order.quantity - order.delivered), 0);
+  const playerDeliveryEvents = lastReport && player ? lastReport.deliveries.filter((delivery) => delivery.startsWith(`${player.name} delivered`)).length : 0;
 
   if (!gameState || !player) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-700">Loading campaign...</div>;
@@ -233,7 +234,7 @@ export function Dashboard() {
             financial={playerFinancial}
             activePrograms={player.aircraftPrograms.filter((program) => program.status === "active").length}
             backlog={backlog}
-            deliveries={lastReport?.deliveries.length ?? 0}
+            deliveries={playerDeliveryEvents}
             marketShare={player.marketShare["narrow-body"]}
           />
 
@@ -400,6 +401,7 @@ function AircraftTab({
   launch: () => void;
 }) {
   const unlocked = new Set(unlockedTechnologyIds);
+  const categoryDefinition = AIRCRAFT_CATEGORIES[designInput.category];
   const engineOptions = [
     { value: "low-bypass-turbofan", label: "Early turbofan", requiredTechnologyId: undefined },
     { value: "high-bypass-turbofan", label: "High-bypass turbofan", requiredTechnologyId: "high-bypass-turbofans" },
@@ -426,7 +428,11 @@ function AircraftTab({
     .filter((technology) => ["propulsion", "aerodynamics", "structures", "avionics", "manufacturing", "safety", "cabin-operations"].includes(technology.branch));
 
   function update<K extends keyof AircraftDesignInput>(key: K, value: AircraftDesignInput[K]) {
-    setDesignInput({ ...designInput, [key]: value });
+    setDesignInput(sanitizeAircraftDesignInput({ ...designInput, [key]: value }, unlockedTechnologyIds));
+  }
+
+  function updateCapacity(passengerCapacity: number) {
+    setDesignInput(sanitizeAircraftDesignInput(withAirframeScaledToCapacity({ ...designInput, passengerCapacity }), unlockedTechnologyIds));
   }
 
   function toggleTechnology(technologyId: string) {
@@ -469,8 +475,22 @@ function AircraftTab({
               ))}
             </select>
           </label>
-          <RangeControl label="Passengers" value={designInput.passengerCapacity} min={40} max={430} step={5} onChange={(value) => update("passengerCapacity", value)} />
-          <RangeControl label="Range nm" value={designInput.rangeNm} min={650} max={9000} step={50} onChange={(value) => update("rangeNm", value)} />
+          <RangeControl
+            label="Passengers"
+            value={designInput.passengerCapacity}
+            min={categoryDefinition.capacityRange[0]}
+            max={categoryDefinition.capacityRange[1]}
+            step={1}
+            onChange={updateCapacity}
+          />
+          <RangeControl
+            label="Range nm"
+            value={designInput.rangeNm}
+            min={categoryDefinition.rangeRangeNm[0]}
+            max={categoryDefinition.rangeRangeNm[1]}
+            step={50}
+            onChange={(value) => update("rangeNm", value)}
+          />
           <RangeControl label="Cruise Mach" value={designInput.cruiseSpeedMach} min={0.68} max={0.88} step={0.01} onChange={(value) => update("cruiseSpeedMach", value)} />
           <RangeControl label="Wing sweep" value={designInput.wingSweepDeg} min={10} max={38} step={1} onChange={(value) => update("wingSweepDeg", value)} />
           <RangeControl label="Wing area m2" value={designInput.wingAreaM2} min={55} max={380} step={5} onChange={(value) => update("wingAreaM2", value)} />
@@ -1265,94 +1285,198 @@ function AircraftPlanform() {
 }
 
 function AircraftSpecimen({ input }: { input: AircraftDesignInput }) {
-  const length = Math.max(150, Math.min(300, input.fuselageLengthM * 4.8));
-  const width = Math.max(12, Math.min(28, input.fuselageWidthM * 4.4));
-  const wing = Math.max(84, Math.min(240, input.wingAreaM2 * 0.72));
-  const sweep = Math.max(8, Math.min(40, input.wingSweepDeg));
+  const length = Math.max(250, Math.min(430, input.fuselageLengthM * 6));
+  const fuselageHeight = Math.max(22, Math.min(42, input.fuselageWidthM * 6.2));
+  const wingAreaScale = Math.max(95, Math.min(245, input.wingAreaM2 * 0.82));
+  const sweep = Math.max(8, Math.min(42, input.wingSweepDeg));
   const engineCount = Math.max(2, Math.min(4, input.engineCount));
+  const noseX = 58;
+  const tailX = noseX + length;
+  const centerY = 128;
+  const topY = centerY - fuselageHeight / 2;
+  const bottomY = centerY + fuselageHeight / 2;
+  const wingRootX = noseX + length * (input.category === "wide-body" ? 0.42 : 0.45);
+  const wingTipX = Math.min(520, wingRootX + wingAreaScale);
+  const wingDrop = input.category === "wide-body" ? 82 : input.category === "narrow-body" ? 70 : 58;
+  const windowCount = Math.max(5, Math.min(28, Math.round(input.passengerCapacity / (input.category === "wide-body" ? 15 : 9))));
   const hasWinglets = input.technologyPackage.some((technologyId) =>
     ["early-wingtip-devices", "advanced-winglets", "raked-wingtips"].includes(technologyId)
   );
+  const enginePositions = sideEnginePositions(input.category, engineCount, wingRootX, wingTipX, tailX, centerY);
+
   return (
-    <div className="flex min-h-52 w-full min-w-64 items-center justify-center rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-3">
-      <svg width="420" height="250" viewBox="0 0 420 250" role="img" aria-label={`${input.name} aircraft drawing`}>
+    <div className="flex min-h-72 w-full min-w-64 items-center justify-center rounded-lg border border-[#d8ddd2] bg-[#eef3f0] p-3">
+      <svg width="560" height="280" viewBox="0 0 560 280" role="img" aria-label={`${input.name} aircraft drawing`}>
         <defs>
-          <linearGradient id="fuselagePaint" x1="0" x2="1">
-            <stop offset="0%" stopColor="#e8efeb" />
-            <stop offset="55%" stopColor="#ffffff" />
-            <stop offset="100%" stopColor="#cbd7d1" />
+          <linearGradient id="previewSky" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#f8fbf8" />
+            <stop offset="100%" stopColor="#e5ece8" />
+          </linearGradient>
+          <linearGradient id="fuselagePaint" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="45%" stopColor="#e9f0ec" />
+            <stop offset="100%" stopColor="#c6d2cc" />
           </linearGradient>
           <linearGradient id="wingPaint" x1="0" x2="1">
-            <stop offset="0%" stopColor="#9bb0a6" />
-            <stop offset="100%" stopColor="#d6b45d" />
+            <stop offset="0%" stopColor="#82998f" />
+            <stop offset="58%" stopColor="#d6b45d" />
+            <stop offset="100%" stopColor="#f1d988" />
           </linearGradient>
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+            <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#25312d" floodOpacity="0.18" />
+          </filter>
         </defs>
-        <rect x="18" y="18" width="384" height="214" rx="8" fill="#edf2ee" />
-        <path d="M38 46 H382" stroke="#d5ddd8" strokeDasharray="7 8" />
-        <path d="M38 204 H382" stroke="#d5ddd8" strokeDasharray="7 8" />
-
-        <g transform="translate(210 86)">
+        <rect x="0" y="0" width="560" height="280" rx="14" fill="url(#previewSky)" />
+        {Array.from({ length: 11 }, (_, index) => (
+          <path key={`grid-h-${index}`} d={`M 26 ${36 + index * 21} H 534`} stroke="#d8e0dc" strokeWidth="1" opacity={index % 2 === 0 ? 0.72 : 0.34} />
+        ))}
+        {Array.from({ length: 13 }, (_, index) => (
+          <path key={`grid-v-${index}`} d={`M ${44 + index * 39} 24 V 246`} stroke="#d8e0dc" strokeWidth="1" opacity={0.28} />
+        ))}
+        <ellipse cx="285" cy="218" rx={Math.max(145, length * 0.38)} ry="18" fill="#26312e" opacity="0.09" />
+        <g filter="url(#softShadow)">
           <path
-            d={`M${-wing / 2} 0 L${-16 - sweep * 0.9} ${-34} L${18} -4 L${wing / 2} 0 L18 4 L${-16 - sweep * 0.9} 34 Z`}
+            d={`M ${wingRootX - 24} ${centerY + 9} L ${wingRootX + 38 - sweep} ${centerY + 2} L ${wingTipX} ${centerY + wingDrop} L ${wingTipX - 62} ${centerY + wingDrop + 15} L ${wingRootX - 42} ${centerY + 19} Z`}
             fill="url(#wingPaint)"
             stroke="#6c8177"
-            strokeWidth="1.5"
+            strokeWidth="2"
           />
           {hasWinglets && (
             <>
-              <path d={`M${-wing / 2 - 2} -2 l-10 -18`} stroke="#2f7d73" strokeWidth="4" strokeLinecap="round" />
-              <path d={`M${wing / 2 + 2} -2 l10 -18`} stroke="#2f7d73" strokeWidth="4" strokeLinecap="round" />
+              <path d={`M ${wingTipX - 4} ${centerY + wingDrop + 1} l 14 -30`} stroke="#0f766e" strokeWidth="6" strokeLinecap="round" />
+              <path d={`M ${wingTipX - 54} ${centerY + wingDrop + 13} l 12 -20`} stroke="#2f7d73" strokeWidth="4" strokeLinecap="round" opacity="0.72" />
             </>
           )}
-          <rect x={-length / 2} y={-width / 2} width={length} height={width} rx={width / 2} fill="url(#fuselagePaint)" stroke="#50625b" strokeWidth="1.5" />
-          <path d={`M${length / 2 - 14} ${-width / 2} L${length / 2 + 24} 0 L${length / 2 - 14} ${width / 2} Z`} fill="#2f7d73" />
-          <path d={`M${-length / 2 + 20} ${-width / 2} L${-length / 2 - 6} 0 L${-length / 2 + 20} ${width / 2} Z`} fill="#e8efeb" stroke="#50625b" strokeWidth="1" />
-          <path d={`M${length / 2 - 52} ${-width / 2} L${length / 2 - 18} ${-width * 2.6} L${length / 2 - 28} ${-width / 2}`} fill="#0f766e" opacity="0.92" />
-          <path d={`M${length / 2 - 52} ${width / 2} L${length / 2 - 18} ${width * 2.6} L${length / 2 - 28} ${width / 2}`} fill="#0f766e" opacity="0.82" />
-          {engineMounts(engineCount, wing).map((mount, index) => (
-            <ellipse key={index} cx={mount.x} cy={mount.y} rx="9" ry="6" fill="#26312e" stroke="#e4c967" strokeWidth="2" />
+          <path
+            d={`M ${noseX} ${centerY}
+              C ${noseX + 18} ${topY - 17}, ${noseX + 72} ${topY - 18}, ${tailX - 62} ${topY - 7}
+              C ${tailX - 20} ${topY - 3}, ${tailX + 23} ${centerY - 4}, ${tailX + 42} ${centerY}
+              C ${tailX + 19} ${centerY + 18}, ${tailX - 31} ${bottomY + 8}, ${noseX + 30} ${bottomY + 6}
+              C ${noseX + 5} ${bottomY + 5}, ${noseX - 10} ${centerY + 13}, ${noseX} ${centerY} Z`}
+            fill="url(#fuselagePaint)"
+            stroke="#52655e"
+            strokeWidth="2.5"
+          />
+          <path d={`M ${noseX + 18} ${centerY - 3} C ${noseX + 24} ${topY - 7}, ${noseX + 48} ${topY - 8}, ${noseX + 68} ${topY - 4}`} fill="none" stroke="#26312e" strokeWidth="2" opacity="0.5" />
+          <path d={`M ${tailX - 56} ${topY + 6} L ${tailX - 18} ${topY - 76} L ${tailX + 5} ${topY + 4} Z`} fill="#0f766e" stroke="#0b5f59" strokeWidth="2" />
+          <path d={`M ${tailX - 62} ${centerY + 5} L ${tailX + 8} ${centerY - 16} L ${tailX - 16} ${centerY + 13} Z`} fill="#9fb4aa" stroke="#6c8177" strokeWidth="1.5" />
+          <path d={`M ${noseX + 78} ${centerY + 5} H ${tailX - 70}`} stroke="#d6b45d" strokeWidth="6" strokeLinecap="round" />
+          <path d={`M ${noseX + 80} ${centerY + 1} H ${tailX - 72}`} stroke="#fff6ce" strokeWidth="2" strokeLinecap="round" opacity="0.72" />
+          {Array.from({ length: windowCount }, (_, index) => {
+            const spacing = (length - 132) / Math.max(1, windowCount - 1);
+            return (
+              <rect
+                key={index}
+                x={noseX + 78 + index * spacing}
+                y={topY + 9}
+                width="7"
+                height="5"
+                rx="1.5"
+                fill="#2f7d73"
+                opacity="0.88"
+              />
+            );
+          })}
+          <rect x={noseX + 56} y={topY + 13} width="10" height={fuselageHeight - 11} rx="2" fill="none" stroke="#52655e" strokeWidth="1.2" opacity="0.7" />
+          <rect x={tailX - 92} y={topY + 13} width="10" height={fuselageHeight - 13} rx="2" fill="none" stroke="#52655e" strokeWidth="1.2" opacity="0.62" />
+          {enginePositions.map((engine, index) => (
+            <g key={index}>
+              <path d={`M ${engine.x - 4} ${engine.y - 22} L ${engine.x - 8} ${engine.y - 8}`} stroke="#52655e" strokeWidth="3" strokeLinecap="round" />
+              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx} ry={engine.ry} fill="#e7eee9" stroke="#d6b45d" strokeWidth="4" />
+              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx - 7} ry={engine.ry - 5} fill="#26312e" />
+              <ellipse cx={engine.x - 3} cy={engine.y - 2} rx={Math.max(3, engine.rx - 13)} ry={Math.max(2, engine.ry - 9)} fill="#64746e" opacity="0.62" />
+            </g>
           ))}
-        </g>
-
-        <g transform="translate(210 184)">
-          <path d={`M${-length / 2 + 12} 0 C${-length / 2 + 26} -17, ${length / 2 - 36} -18, ${length / 2 + 22} -2 C${length / 2 + 10} 11, ${-length / 2 + 30} 14, ${-length / 2 + 12} 0 Z`} fill="url(#fuselagePaint)" stroke="#50625b" strokeWidth="1.5" />
-          <path d={`M${length / 2 - 38} -6 L${length / 2 - 12} -42 L${length / 2 - 4} -3 Z`} fill="#0f766e" />
-          <path d={`M-16 4 L${-wing / 2 + 30} 30 L${wing / 2 - 24} 19 L24 1 Z`} fill="#d6b45d" opacity="0.78" stroke="#92763b" strokeWidth="1" />
-          {engineMounts(engineCount, wing * 0.62).map((mount, index) => (
-            <ellipse key={index} cx={mount.x * 0.72} cy="23" rx="10" ry="7" fill="#26312e" stroke="#9bb0a6" strokeWidth="2" />
-          ))}
-          {Array.from({ length: Math.max(5, Math.min(18, Math.floor(input.passengerCapacity / 22))) }, (_, index) => (
-            <rect key={index} x={-length / 2 + 38 + index * 14} y="-8" width="5" height="4" rx="1" fill="#2f7d73" opacity="0.82" />
-          ))}
-          <rect x={-length / 2 + 30} y="3" width={Math.max(70, length * 0.55)} height="3" rx="1.5" fill="#e4c967" />
         </g>
       </svg>
     </div>
   );
 }
 
-function engineMounts(engineCount: number, wing: number): { x: number; y: number }[] {
+function sideEnginePositions(
+  category: AircraftCategory,
+  engineCount: number,
+  wingRootX: number,
+  wingTipX: number,
+  tailX: number,
+  centerY: number
+): { x: number; y: number; rx: number; ry: number }[] {
+  if (category === "regional-jet" && engineCount === 2) {
+    return [
+      { x: tailX - 72, y: centerY + 26, rx: 15, ry: 11 }
+    ];
+  }
+
+  const wingSpan = wingTipX - wingRootX;
   if (engineCount >= 4) {
     return [
-      { x: -wing * 0.3, y: -18 },
-      { x: -wing * 0.16, y: 18 },
-      { x: wing * 0.16, y: -18 },
-      { x: wing * 0.3, y: 18 }
+      { x: wingRootX + wingSpan * 0.22, y: centerY + 42, rx: 18, ry: 13 },
+      { x: wingRootX + wingSpan * 0.38, y: centerY + 50, rx: 18, ry: 13 },
+      { x: wingRootX + wingSpan * 0.58, y: centerY + 50, rx: 18, ry: 13 },
+      { x: wingRootX + wingSpan * 0.74, y: centerY + 42, rx: 18, ry: 13 }
     ];
   }
 
   if (engineCount === 3) {
     return [
-      { x: -wing * 0.22, y: 18 },
-      { x: wing * 0.22, y: 18 },
-      { x: wing * 0.42, y: 0 }
+      { x: wingRootX + wingSpan * 0.34, y: centerY + 46, rx: 19, ry: 14 },
+      { x: wingRootX + wingSpan * 0.62, y: centerY + 46, rx: 19, ry: 14 },
+      { x: tailX - 58, y: centerY + 8, rx: 14, ry: 10 }
     ];
   }
 
   return [
-    { x: -wing * 0.24, y: 18 },
-    { x: wing * 0.24, y: 18 }
+    { x: wingRootX + wingSpan * 0.36, y: centerY + 46, rx: 19, ry: 14 },
+    { x: wingRootX + wingSpan * 0.64, y: centerY + 46, rx: 19, ry: 14 }
   ];
+}
+
+function withAirframeScaledToCapacity(input: AircraftDesignInput): AircraftDesignInput {
+  const category = AIRCRAFT_CATEGORIES[input.category];
+  const ratio = (input.passengerCapacity - category.capacityRange[0]) / (category.capacityRange[1] - category.capacityRange[0]);
+  const envelope = visualAirframeEnvelope(input.category);
+  return {
+    ...input,
+    fuselageLengthM: roundOne(lerp(envelope.fuselageLength[0], envelope.fuselageLength[1], ratio)),
+    fuselageWidthM: roundOne(lerp(envelope.fuselageWidth[0], envelope.fuselageWidth[1], ratio)),
+    wingAreaM2: Math.round(lerp(envelope.wingArea[0], envelope.wingArea[1], ratio))
+  };
+}
+
+function visualAirframeEnvelope(category: AircraftCategory): {
+  fuselageLength: [number, number];
+  fuselageWidth: [number, number];
+  wingArea: [number, number];
+} {
+  if (category === "regional-jet") {
+    return {
+      fuselageLength: [21, 33],
+      fuselageWidth: [2.5, 3.4],
+      wingArea: [52, 92]
+    };
+  }
+
+  if (category === "narrow-body") {
+    return {
+      fuselageLength: [31, 47],
+      fuselageWidth: [3.3, 4.2],
+      wingArea: [95, 165]
+    };
+  }
+
+  return {
+    fuselageLength: [48, 76],
+    fuselageWidth: [5, 6.8],
+    wingArea: [245, 390]
+  };
+}
+
+function lerp(min: number, max: number, ratio: number): number {
+  return min + (max - min) * Math.max(0, Math.min(1, ratio));
+}
+
+function roundOne(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function createDefaultDesignInputForUnlocked(

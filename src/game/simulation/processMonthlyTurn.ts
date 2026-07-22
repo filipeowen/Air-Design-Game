@@ -99,7 +99,7 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
   const report: MonthlyTurnReport = {
     turn,
     date,
-    summary: createSummary(next, airlineResult.orders, deliveries, developmentUpdates, researchCompleted),
+    summary: createSummary(next, deliveries, developmentUpdates, researchCompleted),
     financialReports,
     researchCompleted,
     developmentUpdates,
@@ -163,16 +163,23 @@ function updateMarketShare(state: GameState): void {
 
 function createSummary(
   state: GameState,
-  orders: string[],
   deliveries: string[],
   developmentUpdates: string[],
   researchCompleted: string[]
 ): string {
   const player = state.manufacturers[state.playerCompanyId];
   const date = formatGameDate(state.date);
-  const orderText = orders.length > 0 ? `${orders.length} new order${orders.length === 1 ? "" : "s"}` : "no new orders";
-  const deliveryText = deliveries.length > 0 ? `${deliveries.length} delivery event${deliveries.length === 1 ? "" : "s"}` : "no deliveries";
-  const researchText = researchCompleted.length > 0 ? `${researchCompleted.length} technology completion${researchCompleted.length === 1 ? "" : "s"}` : "no completed research";
-  const programText = developmentUpdates.length > 0 ? `${developmentUpdates.length} program update${developmentUpdates.length === 1 ? "" : "s"}` : "steady development work";
+  const playerOrderCount = Object.values(state.orders).filter(
+    (order) => order.manufacturerId === state.playerCompanyId && order.orderTurn === state.turn
+  ).length;
+  const playerDeliveryCount = deliveries.filter((delivery) => player && delivery.startsWith(`${player.name} delivered`)).length;
+  const playerResearchCount = researchCompleted.filter((research) => player && research.startsWith(`${player.name} completed`)).length;
+  const playerDevelopmentCount = developmentUpdates.filter(
+    (update) => player?.aircraftPrograms.some((program) => update.startsWith(program.name))
+  ).length;
+  const orderText = playerOrderCount > 0 ? `${playerOrderCount} new order${playerOrderCount === 1 ? "" : "s"}` : "no new orders";
+  const deliveryText = playerDeliveryCount > 0 ? `${playerDeliveryCount} delivery event${playerDeliveryCount === 1 ? "" : "s"}` : "no deliveries";
+  const researchText = playerResearchCount > 0 ? `${playerResearchCount} technology completion${playerResearchCount === 1 ? "" : "s"}` : "no completed research";
+  const programText = playerDevelopmentCount > 0 ? `${playerDevelopmentCount} program update${playerDevelopmentCount === 1 ? "" : "s"}` : "steady development work";
   return `${date}: ${player?.name ?? "The player company"} recorded ${orderText}, ${deliveryText}, ${researchText}, and ${programText}.`;
 }

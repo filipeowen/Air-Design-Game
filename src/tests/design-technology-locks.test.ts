@@ -25,4 +25,27 @@ describe("aircraft design technology locks", () => {
     expect(launchedInput.landingGear).toBe("standard");
     expect(launchedInput.technologyPackage).toEqual([]);
   });
+
+  it("clamps passenger capacity and range to the selected aircraft category", () => {
+    const state = createNewGame({ seed: 1971 });
+    const regionalInput = {
+      ...createDefaultDesignInput("regional-jet", "Impossible Commuter"),
+      passengerCapacity: 400,
+      rangeNm: 8_500
+    };
+    const wideInput = {
+      ...createDefaultDesignInput("wide-body", "Tiny Widebody"),
+      passengerCapacity: 70,
+      rangeNm: 1_000
+    };
+
+    const regionalState = launchPlayerAircraftProgram(state, regionalInput);
+    const wideState = launchPlayerAircraftProgram(regionalState, wideInput);
+    const player = wideState.manufacturers[wideState.playerCompanyId]!;
+
+    expect(player.aircraftDesigns[0]!.input.passengerCapacity).toBe(95);
+    expect(player.aircraftDesigns[0]!.input.rangeNm).toBe(1_800);
+    expect(player.aircraftDesigns[1]!.input.passengerCapacity).toBe(230);
+    expect(player.aircraftDesigns[1]!.input.rangeNm).toBe(4_200);
+  });
 });
