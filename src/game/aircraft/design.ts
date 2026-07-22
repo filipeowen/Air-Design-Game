@@ -41,16 +41,16 @@ export function createDefaultDesignInput(category: AircraftCategory, name = "New
     wingAreaM2: category === "wide-body" ? 310 : category === "narrow-body" ? 125 : 72,
     wingSweepDeg: category === "regional-jet" ? 22 : 28,
     engineCount: category === "wide-body" ? 3 : 2,
-    engineType: "high-bypass-turbofan",
+    engineType: "low-bypass-turbofan",
     engineThrustKn: category === "wide-body" ? 220 : category === "narrow-body" ? 92 : 55,
-    structuralMaterial: "improved-aluminum",
+    structuralMaterial: "classic-aluminum",
     cabinComfort: 60,
     seatingDensity: 62,
     reliabilityTarget: 72,
-    avionicsPackage: "improved-analog",
+    avionicsPackage: "analog",
     landingGear: "standard",
     airportCompatibilityTarget: 65,
-    technologyPackage: ["improved-aluminum-alloys", "high-bypass-turbofans"],
+    technologyPackage: [],
     commonality: 30
   };
 }
@@ -66,9 +66,18 @@ export function calculateAircraftDesign(input: AircraftDesignInput): Omit<Aircra
   const wingLoading = input.passengerCapacity * 92 / Math.max(1, input.wingAreaM2);
   const materialWeightFactor = MATERIAL_WEIGHT_FACTOR[input.structuralMaterial];
   const engineFuelFactor = ENGINE_FUEL_FACTOR[input.engineType];
-  const techFuelBonus = input.technologyPackage.includes("winglets") ? 5 : 0;
+  const techFuelBonus =
+    (input.technologyPackage.includes("early-wingtip-devices") ? 3 : 0) +
+    (input.technologyPackage.includes("advanced-winglets") ? 6 : 0) +
+    (input.technologyPackage.includes("raked-wingtips") ? 8 : 0) +
+    (input.technologyPackage.includes("improved-aerodynamics") ? 3 : 0) +
+    (input.technologyPackage.includes("supercritical-wing-research") ? 4 : 0);
   const techReliabilityBonus = input.technologyPackage.includes("reliability-growth-testing") ? 6 : 0;
-  const techProductionBonus = input.technologyPackage.includes("automated-manufacturing") ? 4 : 0;
+  const techProductionBonus =
+    (input.technologyPackage.includes("improved-assembly-line-organization") ? 2 : 0) +
+    (input.technologyPackage.includes("automated-manufacturing") ? 4 : 0) +
+    (input.technologyPackage.includes("lean-manufacturing") ? 4 : 0) +
+    (input.technologyPackage.includes("digital-factory-integration") ? 4 : 0);
   const comfortWeight = input.cabinComfort * 55;
   const densityPenalty = Math.max(0, 60 - input.seatingDensity) * 40;
   const payloadKg = input.passengerCapacity * 105;

@@ -35,7 +35,7 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
     manufacturer.cash -= salaries;
     financial.salaries += salaries;
 
-    const research = processResearch(manufacturer, next.technologies, financial);
+    const research = processResearch(manufacturer, next.technologies, financial, date.year);
     researchCompleted.push(...research.completedTechnologyNames);
 
     const development = processDevelopment(manufacturer, rng, financial, turn);

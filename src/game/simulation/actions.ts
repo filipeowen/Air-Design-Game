@@ -1,7 +1,8 @@
 import { calculateAircraftDesign } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
 import { createProductionLine } from "@/game/factories/process";
-import { createResearchProject } from "@/game/research/process";
+import { canResearchTechnology, createResearchProject } from "@/game/research/process";
+import { hasResearchSlotAvailable } from "@/game/research/rules";
 import type { AircraftCategory, AircraftDesignInput, Factory, GameState } from "@/game/types";
 
 export function launchPlayerAircraftProgram(state: GameState, input: AircraftDesignInput): GameState {
@@ -11,9 +12,10 @@ export function launchPlayerAircraftProgram(state: GameState, input: AircraftDes
     throw new Error("Player company is missing.");
   }
 
-  const calculated = calculateAircraftDesign(input);
+  const sanitizedInput = sanitizeAircraftDesignInput(input, player.unlockedTechnologyIds);
+  const calculated = calculateAircraftDesign(sanitizedInput);
   const design = {
-    id: `design-player-${next.turn}-${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    id: `design-player-${next.turn}-${sanitizedInput.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     manufacturerId: player.id,
     createdTurn: next.turn,
     ...calculated
@@ -34,11 +36,63 @@ export function startPlayerResearch(
   if (!player) {
     throw new Error("Player company is missing.");
   }
+  const technology = next.technologies[technologyId];
+  if (!technology || !canResearchTechnology(player, technology, next.date.year, next.technologies) || !hasResearchSlotAvailable(player)) {
+    return next;
+  }
   const existing = player.researchProjects.find((project) => project.technologyId === technologyId && project.status === "active");
   if (!existing && !player.unlockedTechnologyIds.includes(technologyId)) {
     player.researchProjects.push(createResearchProject(player.id, technologyId, assignedScientists, monthlyBudget));
   }
   return next;
+}
+
+export function sanitizeAircraftDesignInput(input: AircraftDesignInput, unlockedTechnologyIds: string[]): AircraftDesignInput {
+  const unlocked = new Set(unlockedTechnologyIds);
+  const engineType =
+    input.engineType === "advanced-turbofan" && !unlocked.has("advanced-turbofans")
+      ? unlocked.has("high-bypass-turbofans")
+        ? "high-bypass-turbofan"
+        : "low-bypass-turbofan"
+      : input.engineType === "high-bypass-turbofan" && !unlocked.has("high-bypass-turbofans")
+        ? "low-bypass-turbofan"
+        : input.engineType;
+
+  const structuralMaterial =
+    input.structuralMaterial === "early-composite" &&
+    !unlocked.has("early-composite-secondary-structures") &&
+    !unlocked.has("primary-composite-structures")
+      ? unlocked.has("improved-aluminum-alloys")
+        ? "improved-aluminum"
+        : "classic-aluminum"
+      : input.structuralMaterial === "improved-aluminum" && !unlocked.has("improved-aluminum-alloys")
+        ? "classic-aluminum"
+        : input.structuralMaterial;
+
+  const avionicsPackage =
+    input.avionicsPackage === "digital" && !unlocked.has("digital-avionics-i")
+      ? unlocked.has("improved-avionics")
+        ? "improved-analog"
+        : "analog"
+      : input.avionicsPackage === "improved-analog" && !unlocked.has("improved-avionics")
+        ? "analog"
+        : input.avionicsPackage;
+
+  const landingGear =
+    input.landingGear === "short-field" && !unlocked.has("advanced-high-lift-devices")
+      ? "standard"
+      : input.landingGear === "reinforced" && !unlocked.has("damage-tolerant-structural-design")
+        ? "standard"
+        : input.landingGear;
+
+  return {
+    ...input,
+    engineType,
+    structuralMaterial,
+    avionicsPackage,
+    landingGear,
+    technologyPackage: input.technologyPackage.filter((technologyId) => unlocked.has(technologyId))
+  };
 }
 
 export function updatePlayerProgram(

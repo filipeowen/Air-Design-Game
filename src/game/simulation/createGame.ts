@@ -141,6 +141,7 @@ function addLegacyModel(manufacturer: Manufacturer, category: AircraftCategory, 
   const input = createDefaultDesignInput(category, legacyName(manufacturer.id, category));
   input.structuralMaterial = "classic-aluminum";
   input.avionicsPackage = "analog";
+  input.engineType = "high-bypass-turbofan";
   input.commonality = 70;
   input.reliabilityTarget = 66;
   input.technologyPackage = manufacturer.unlockedTechnologyIds;

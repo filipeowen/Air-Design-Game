@@ -4,6 +4,7 @@ import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircra
 import { createAircraftProgram } from "@/game/development/process";
 import { createProductionLine } from "@/game/factories/process";
 import { canResearchTechnology, createResearchProject } from "@/game/research/process";
+import { getResearchSlotCount } from "@/game/research/rules";
 import type { AircraftCategory, Manufacturer, MarketSegment, Technology } from "@/game/types";
 import type { RandomSource } from "@/game/utils/prng";
 
@@ -57,13 +58,13 @@ function chooseResearch(
   actions: string[]
 ): void {
   const active = manufacturer.researchProjects.filter((project) => project.status === "active");
-  const desiredProjects = manufacturer.strategy.researchIntensity > 65 ? 2 : 1;
+  const desiredProjects = Math.min(getResearchSlotCount(manufacturer), manufacturer.strategy.researchIntensity > 65 ? 2 : 1);
   if (active.length >= desiredProjects || manufacturer.cash < 350_000_000) {
     return;
   }
 
   const candidates = Object.values(technologies)
-    .filter((technology) => canResearchTechnology(manufacturer, technology, year))
+    .filter((technology) => canResearchTechnology(manufacturer, technology, year, technologies))
     .map((technology) => ({
       technology,
       score: technologyScore(manufacturer, technology) + rng.nextBetween(-5, 5)

@@ -6,9 +6,12 @@ import {
   BriefcaseBusiness,
   Building2,
   CalendarDays,
+  Check,
+  Clock3,
   Factory,
   FlaskConical,
   Gauge,
+  Lock,
   PackageCheck,
   Plane,
   Play,
@@ -21,19 +24,29 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
+import { RESEARCH_ERAS, TECHNOLOGY_BRANCHES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
 import { canResearchTechnology } from "@/game/research/process";
+import {
+  getAheadOfTimePenaltyMultiplier,
+  getAheadOfTimeYears,
+  getEffectiveResearchPointsRequired,
+  getResearchSlotCount,
+  getTechnologyResearchState,
+  hasResearchSlotAvailable
+} from "@/game/research/rules";
 import {
   assignPlayerProductionLine,
   buildPlayerFactory,
   changeEmployeeHeadcount,
   launchPlayerAircraftProgram,
+  sanitizeAircraftDesignInput,
   startPlayerResearch,
   updatePlayerProgram
 } from "@/game/simulation/actions";
 import { createNewGame } from "@/game/simulation/createGame";
 import { processMonthlyTurn } from "@/game/simulation/processMonthlyTurn";
-import type { AircraftCategory, AircraftDesignInput, GameState, MonthlyFinancialReport } from "@/game/types";
+import type { AircraftCategory, AircraftDesignInput, GameState, MonthlyFinancialReport, Technology, TechnologyBranch } from "@/game/types";
 import { formatGameDate } from "@/game/utils/date";
 import { formatMoney } from "@/game/finance/calculations";
 import {
@@ -76,7 +89,7 @@ export function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
   const [designInput, setDesignInput] = useState<AircraftDesignInput>(() =>
-    createDefaultDesignInput("regional-jet", "Pioneer RJ-70")
+    createDefaultDesignInputForUnlocked("regional-jet", "Pioneer RJ-70", ["improved-aluminum-alloys"])
   );
   const [statusMessage, setStatusMessage] = useState("Ready");
 
@@ -93,6 +106,17 @@ export function Dashboard() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!gameState) {
+      return;
+    }
+    const currentPlayer = gameState.manufacturers[gameState.playerCompanyId];
+    if (!currentPlayer) {
+      return;
+    }
+    setDesignInput((current) => sanitizeAircraftDesignInput(current, currentPlayer.unlockedTechnologyIds));
+  }, [gameState?.playerCompanyId, gameState ? gameState.manufacturers[gameState.playerCompanyId]?.unlockedTechnologyIds.join("|") : ""]);
 
   const player = gameState ? gameState.manufacturers[gameState.playerCompanyId] : null;
   const lastReport = gameState?.monthlyHistory.at(-1);
@@ -149,7 +173,7 @@ export function Dashboard() {
     const companyName = window.prompt("Company name", "Pioneer Commercial Aircraft")?.trim();
     const next = createNewGame({ companyName: companyName || "Pioneer Commercial Aircraft" });
     setGameState(next);
-    setDesignInput(createDefaultDesignInput("regional-jet", "Pioneer RJ-70"));
+    setDesignInput(createDefaultDesignInputForUnlocked("regional-jet", "Pioneer RJ-70", next.manufacturers[next.playerCompanyId]!.unlockedTechnologyIds));
     setStatusMessage("New campaign started.");
   }
 
@@ -221,6 +245,8 @@ export function Dashboard() {
               designInput={designInput}
               setDesignInput={setDesignInput}
               designPreview={designPreview}
+              unlockedTechnologyIds={player.unlockedTechnologyIds}
+              technologies={gameState.technologies}
               launch={() =>
                 mutateGame(
                   (state) => launchPlayerAircraftProgram(state, designInput),
@@ -362,15 +388,52 @@ function AircraftTab({
   designInput,
   setDesignInput,
   designPreview,
+  unlockedTechnologyIds,
+  technologies,
   launch
 }: {
   designInput: AircraftDesignInput;
   setDesignInput: (value: AircraftDesignInput) => void;
   designPreview: ReturnType<typeof calculateAircraftDesign>;
+  unlockedTechnologyIds: string[];
+  technologies: GameState["technologies"];
   launch: () => void;
 }) {
+  const unlocked = new Set(unlockedTechnologyIds);
+  const engineOptions = [
+    { value: "low-bypass-turbofan", label: "Early turbofan", requiredTechnologyId: undefined },
+    { value: "high-bypass-turbofan", label: "High-bypass turbofan", requiredTechnologyId: "high-bypass-turbofans" },
+    { value: "advanced-turbofan", label: "Advanced turbofan", requiredTechnologyId: "advanced-turbofans" }
+  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
+  const materialOptions = [
+    { value: "classic-aluminum", label: "Classic aluminum", requiredTechnologyId: undefined },
+    { value: "improved-aluminum", label: "Improved aluminum", requiredTechnologyId: "improved-aluminum-alloys" },
+    { value: "early-composite", label: "Composite structures", requiredTechnologyId: "early-composite-secondary-structures" }
+  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
+  const avionicsOptions = [
+    { value: "analog", label: "Analog avionics", requiredTechnologyId: undefined },
+    { value: "improved-analog", label: "Improved analog", requiredTechnologyId: "improved-avionics" },
+    { value: "digital", label: "Digital avionics", requiredTechnologyId: "digital-avionics-i" }
+  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
+  const landingGearOptions = [
+    { value: "standard", label: "Standard", requiredTechnologyId: undefined },
+    { value: "reinforced", label: "Reinforced", requiredTechnologyId: "damage-tolerant-structural-design" },
+    { value: "short-field", label: "Short-field", requiredTechnologyId: "advanced-high-lift-devices" }
+  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
+  const unlockedDesignTechnologies = unlockedTechnologyIds
+    .map((technologyId) => technologies[technologyId])
+    .filter((technology): technology is NonNullable<typeof technology> => Boolean(technology))
+    .filter((technology) => ["propulsion", "aerodynamics", "structures", "avionics", "manufacturing", "safety", "cabin-operations"].includes(technology.branch));
+
   function update<K extends keyof AircraftDesignInput>(key: K, value: AircraftDesignInput[K]) {
     setDesignInput({ ...designInput, [key]: value });
+  }
+
+  function toggleTechnology(technologyId: string) {
+    const nextPackage = designInput.technologyPackage.includes(technologyId)
+      ? designInput.technologyPackage.filter((id) => id !== technologyId)
+      : [...designInput.technologyPackage, technologyId];
+    update("technologyPackage", nextPackage);
   }
 
   return (
@@ -395,7 +458,7 @@ function AircraftTab({
               value={designInput.category}
               onChange={(event) => {
                 const category = event.target.value as AircraftCategory;
-                setDesignInput({ ...createDefaultDesignInput(category, designInput.name), category });
+                setDesignInput(createDefaultDesignInputForUnlocked(category, designInput.name, unlockedTechnologyIds));
               }}
               className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
             >
@@ -419,9 +482,11 @@ function AircraftTab({
                 onChange={(event) => update("engineType", event.target.value as AircraftDesignInput["engineType"])}
                 className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
               >
-                <option value="low-bypass-turbofan">Low-bypass turbofan</option>
-                <option value="high-bypass-turbofan">High-bypass turbofan</option>
-                <option value="advanced-turbofan">Advanced turbofan</option>
+                {engineOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="block text-sm font-medium">
@@ -431,15 +496,70 @@ function AircraftTab({
                 onChange={(event) => update("structuralMaterial", event.target.value as AircraftDesignInput["structuralMaterial"])}
                 className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
               >
-                <option value="classic-aluminum">Classic aluminum</option>
-                <option value="improved-aluminum">Improved aluminum</option>
-                <option value="early-composite">Early composite</option>
+                {materialOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-medium">
+              Avionics
+              <select
+                value={designInput.avionicsPackage}
+                onChange={(event) => update("avionicsPackage", event.target.value as AircraftDesignInput["avionicsPackage"])}
+                className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+              >
+                {avionicsOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-medium">
+              Landing gear
+              <select
+                value={designInput.landingGear}
+                onChange={(event) => update("landingGear", event.target.value as AircraftDesignInput["landingGear"])}
+                className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+              >
+                {landingGearOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
           <RangeControl label="Reliability target" value={designInput.reliabilityTarget} min={50} max={92} step={1} onChange={(value) => update("reliabilityTarget", value)} />
           <RangeControl label="Cabin comfort" value={designInput.cabinComfort} min={30} max={90} step={1} onChange={(value) => update("cabinComfort", value)} />
           <RangeControl label="Commonality" value={designInput.commonality} min={0} max={90} step={1} onChange={(value) => update("commonality", value)} />
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-700">Technology package</h3>
+            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-md border border-[#d8ddd2] p-2">
+              {unlockedDesignTechnologies.length === 0 ? (
+                <p className="px-2 py-1 text-sm text-neutral-600">No unlocked design technologies.</p>
+              ) : (
+                unlockedDesignTechnologies.map((technology) => (
+                  <label key={technology.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[#eef3ee]">
+                    <input
+                      type="checkbox"
+                      checked={designInput.technologyPackage.includes(technology.id)}
+                      onChange={() => toggleTechnology(technology.id)}
+                      className="mt-1 accent-[#0f766e]"
+                    />
+                    <span>
+                      <span className="block font-medium">{technology.name}</span>
+                      <span className="block text-xs text-neutral-600">{technology.effects[0]}</span>
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -512,64 +632,262 @@ function DevelopmentTab({ gameState, mutateGame }: { gameState: GameState; mutat
 
 function ResearchTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
-  const available = Object.values(gameState.technologies).filter((technology) =>
-    canResearchTechnology(player, technology, gameState.date.year)
-  );
+  const activeProjects = player.researchProjects.filter((project) => project.status === "active");
+  const researchSlots = getResearchSlotCount(player);
+  const slotsAvailable = hasResearchSlotAvailable(player);
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-      <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-        <h2 className="text-lg font-semibold">Active Research</h2>
-        <div className="mt-4 space-y-3">
-          {player.researchProjects.filter((project) => project.status === "active").length === 0 ? (
-            <p className="text-sm text-neutral-600">No active research.</p>
-          ) : (
-            player.researchProjects
-              .filter((project) => project.status === "active")
-              .map((project) => {
-                const technology = gameState.technologies[project.technologyId]!;
-                return (
-                  <div key={project.id} className="rounded-lg border border-[#d8ddd2] p-4">
-                    <h3 className="font-semibold">{technology.name}</h3>
-                    <ProgressBar value={(project.progress / technology.researchPointsRequired) * 100} />
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <Metric label="Scientists" value={project.assignedScientists.toLocaleString()} />
-                      <Metric label="Budget" value={formatMoney(project.monthlyBudget)} />
-                    </div>
-                  </div>
-                );
-              })
-          )}
+    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">Technology Tree</h2>
+          <p className="mt-1 text-sm text-neutral-600">
+            {activeProjects.length}/{researchSlots} research slots active · {formatGameDate(gameState.date)}
+          </p>
         </div>
-      </section>
-      <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-        <h2 className="text-lg font-semibold">Technology Tree</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {available.map((technology) => (
-            <div key={technology.id} className="rounded-lg border border-[#d8ddd2] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">{technology.name}</h3>
-                  <p className="mt-1 text-sm text-neutral-600">{technology.area}</p>
-                </div>
-                <IconButton
-                  title="Start research"
-                  icon={Plus}
-                  label="Start"
-                  onClick={() =>
-                    mutateGame(
-                      (state) => startPlayerResearch(state, technology.id, 160, Math.round(technology.researchCost / 30)),
-                      `${technology.name} research started.`
-                    )
-                  }
-                />
+        <div className="flex flex-wrap gap-2">
+          {activeProjects.map((project) => {
+            const technology = gameState.technologies[project.technologyId]!;
+            const effectiveRequired = getEffectiveResearchPointsRequired(player, technology, gameState.date.year, gameState.technologies);
+            return (
+              <div key={project.id} className="min-w-52 rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
+                <div className="text-xs font-semibold text-neutral-700">{technology.name}</div>
+                <ProgressBar value={(project.progress / effectiveRequired) * 100} compact />
               </div>
-              <p className="mt-3 text-sm text-neutral-700">{formatMoney(technology.researchCost)} total · {technology.researchPointsRequired} RP</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      </section>
+      </div>
+      <ResearchTree
+        gameState={gameState}
+        slotsAvailable={slotsAvailable}
+        startTechnology={(technologyId) =>
+          mutateGame(
+            (state) => startPlayerResearch(state, technologyId, 170, Math.round(state.technologies[technologyId]!.researchCost / 30)),
+            `${gameState.technologies[technologyId]!.name} research started.`
+          )
+        }
+      />
+    </section>
+  );
+}
+
+const TREE_START_YEAR = 1970;
+const TREE_END_YEAR = 2030;
+const TREE_YEAR_WIDTH = 58;
+const TREE_BRANCH_LABEL_WIDTH = 230;
+const TREE_HEADER_HEIGHT = 84;
+const TREE_ROW_HEIGHT = 126;
+const TREE_NODE_WIDTH = 184;
+const TREE_NODE_HEIGHT = 76;
+
+function ResearchTree({
+  gameState,
+  slotsAvailable,
+  startTechnology
+}: {
+  gameState: GameState;
+  slotsAvailable: boolean;
+  startTechnology: (technologyId: string) => void;
+}) {
+  const player = gameState.manufacturers[gameState.playerCompanyId]!;
+  const technologies = Object.values(gameState.technologies);
+  const technologyById = gameState.technologies;
+  const treeWidth = TREE_BRANCH_LABEL_WIDTH + (TREE_END_YEAR - TREE_START_YEAR + 1) * TREE_YEAR_WIDTH + TREE_NODE_WIDTH;
+  const treeHeight = TREE_HEADER_HEIGHT + TECHNOLOGY_BRANCHES.length * TREE_ROW_HEIGHT;
+
+  function nodePosition(technology: Technology) {
+    const branchIndex = TECHNOLOGY_BRANCHES.findIndex((branch) => branch.id === technology.branch);
+    const sameYearIndex = technologies
+      .filter((candidate) => candidate.branch === technology.branch && candidate.historicalYear === technology.historicalYear)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .findIndex((candidate) => candidate.id === technology.id);
+    const x = TREE_BRANCH_LABEL_WIDTH + (technology.historicalYear - TREE_START_YEAR) * TREE_YEAR_WIDTH;
+    const y = TREE_HEADER_HEIGHT + branchIndex * TREE_ROW_HEIGHT + 22 + Math.max(0, sameYearIndex) * 22;
+    return { x, y };
+  }
+
+  const connectionLines = technologies.flatMap((technology) => {
+    const target = nodePosition(technology);
+    return technology.prerequisites
+      .map((prerequisiteId) => {
+        const prerequisite = technologyById[prerequisiteId];
+        if (!prerequisite) {
+          return null;
+        }
+        const source = nodePosition(prerequisite);
+        return {
+          id: `${prerequisiteId}-${technology.id}`,
+          x1: source.x + TREE_NODE_WIDTH,
+          y1: source.y + TREE_NODE_HEIGHT / 2,
+          x2: target.x,
+          y2: target.y + TREE_NODE_HEIGHT / 2,
+          active: player.unlockedTechnologyIds.includes(prerequisiteId)
+        };
+      })
+      .filter((line): line is NonNullable<typeof line> => Boolean(line));
+  });
+
+  return (
+    <div className="mt-5 overflow-x-auto rounded-lg border border-[#26332f] bg-[#17211f] shadow-inner">
+      <div className="relative" style={{ width: treeWidth, height: treeHeight }}>
+        <div className="absolute left-0 top-0 z-20 h-full w-[230px] border-r border-[#34443f] bg-[#101716]" />
+        {RESEARCH_ERAS.map((era) => {
+          const startX = TREE_BRANCH_LABEL_WIDTH + (era.startYear - TREE_START_YEAR) * TREE_YEAR_WIDTH;
+          const endYear = era.endYear ?? TREE_END_YEAR;
+          const width = Math.max(240, (endYear - era.startYear + 1) * TREE_YEAR_WIDTH);
+          return (
+            <div
+              key={era.id}
+              className="absolute top-0 z-10 border-r border-[#34443f] bg-[#202b28] px-3 py-3 text-xs font-semibold uppercase text-[#e7ede6]"
+              style={{ left: startX, width, height: TREE_HEADER_HEIGHT }}
+            >
+              <div>{era.label}</div>
+              <div className="mt-1 text-[#aebbb4]">{era.startYear}-{era.endYear ?? "onward"}</div>
+            </div>
+          );
+        })}
+        {TECHNOLOGY_BRANCHES.map((branch, index) => (
+          <div key={branch.id}>
+            <div
+              className="absolute left-0 z-30 flex items-center border-b border-[#34443f] px-4 text-sm font-semibold text-[#e7ede6]"
+              style={{ top: TREE_HEADER_HEIGHT + index * TREE_ROW_HEIGHT, width: TREE_BRANCH_LABEL_WIDTH, height: TREE_ROW_HEIGHT }}
+            >
+              <span className="mr-3 h-9 w-1.5 rounded-full" style={{ background: branch.accent }} />
+              {branch.label}
+            </div>
+            <div
+              className="absolute left-[230px] border-b border-[#2b3935]"
+              style={{ top: TREE_HEADER_HEIGHT + index * TREE_ROW_HEIGHT, width: treeWidth - TREE_BRANCH_LABEL_WIDTH, height: TREE_ROW_HEIGHT }}
+            />
+          </div>
+        ))}
+        <svg className="pointer-events-none absolute left-0 top-0 z-0" width={treeWidth} height={treeHeight} aria-hidden="true">
+          {connectionLines.map((line) => (
+            <path
+              key={line.id}
+              d={`M ${line.x1} ${line.y1} C ${line.x1 + 38} ${line.y1}, ${line.x2 - 38} ${line.y2}, ${line.x2} ${line.y2}`}
+              fill="none"
+              stroke={line.active ? "#d8b75c" : "#596762"}
+              strokeWidth={line.active ? 3 : 2}
+              strokeDasharray={line.active ? undefined : "5 7"}
+            />
+          ))}
+        </svg>
+        {technologies
+          .sort((a, b) => a.historicalYear - b.historicalYear || a.branch.localeCompare(b.branch))
+          .map((technology) => (
+            <TechnologyNode
+              key={technology.id}
+              technology={technology}
+              gameState={gameState}
+              slotsAvailable={slotsAvailable}
+              position={nodePosition(technology)}
+              startTechnology={startTechnology}
+            />
+          ))}
+      </div>
     </div>
   );
+}
+
+function TechnologyNode({
+  technology,
+  gameState,
+  slotsAvailable,
+  position,
+  startTechnology
+}: {
+  technology: Technology;
+  gameState: GameState;
+  slotsAvailable: boolean;
+  position: { x: number; y: number };
+  startTechnology: (technologyId: string) => void;
+}) {
+  const player = gameState.manufacturers[gameState.playerCompanyId]!;
+  const state = getTechnologyResearchState(player, technology, gameState.date.year, gameState.technologies);
+  const activeProject = player.researchProjects.find((project) => project.technologyId === technology.id && project.status === "active");
+  const aheadYears = getAheadOfTimeYears(player, technology, gameState.date.year, gameState.technologies);
+  const penalty = getAheadOfTimePenaltyMultiplier(player, technology, gameState.date.year, gameState.technologies);
+  const effectiveRequired = getEffectiveResearchPointsRequired(player, technology, gameState.date.year, gameState.technologies);
+  const canStart = canResearchTechnology(player, technology, gameState.date.year, gameState.technologies) && slotsAvailable;
+  const branch = TECHNOLOGY_BRANCHES.find((candidate) => candidate.id === technology.branch);
+  const progress = activeProject ? (activeProject.progress / effectiveRequired) * 100 : 0;
+  const stateIcon =
+    state === "completed" ? Check : state === "active" ? Clock3 : state === "available" ? Plus : Lock;
+  const StateIcon = stateIcon;
+  const className =
+    state === "completed"
+      ? "border-[#e4c967] bg-[#f2d36d] text-[#201b0b] shadow-[0_0_0_2px_rgba(242,211,109,0.2)]"
+      : state === "active"
+        ? "border-[#8db7e4] bg-[#d9ebfb] text-[#112235] shadow-[0_0_0_2px_rgba(141,183,228,0.16)]"
+        : state === "available"
+          ? "border-[#76b39d] bg-[#e2f0e6] text-[#10261d] hover:bg-[#ecf7ef]"
+          : "border-[#465650] bg-[#26312e] text-[#b4c0ba]";
+
+  return (
+    <div className="group absolute z-10" style={{ left: position.x, top: position.y, width: TREE_NODE_WIDTH }}>
+      <button
+        title={buildTechnologyTooltip(technology, gameState)}
+        disabled={!canStart}
+        onClick={() => startTechnology(technology.id)}
+        className={`focus-ring relative flex h-[76px] w-full flex-col justify-between rounded-md border p-2 text-left text-xs transition ${className}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <span className="line-clamp-2 text-sm font-semibold leading-4">{technology.name}</span>
+          <StateIcon size={15} className="shrink-0" />
+        </div>
+        <div className="flex items-end justify-between gap-2">
+          <span className="font-semibold">{technology.historicalYear}</span>
+          <span>{formatMoney(technology.researchCost)}</span>
+        </div>
+        {activeProject && (
+          <div className="absolute bottom-0 left-0 h-1 rounded-b bg-[#2f7d73]" style={{ width: `${Math.max(3, Math.min(100, progress))}%` }} />
+        )}
+        <span className="absolute left-0 top-0 h-full w-1 rounded-l" style={{ background: branch?.accent ?? "#87948e" }} />
+      </button>
+      <div className="pointer-events-none absolute left-0 top-[84px] z-40 hidden w-80 rounded-md border border-[#3a4945] bg-[#111816] p-3 text-xs leading-5 text-[#e7ede6] shadow-xl group-hover:block">
+        <div className="font-semibold">{technology.name}</div>
+        <div className="mt-1 text-[#b8c5bf]">
+          {technology.historicalYear} · {technology.era.replaceAll("-", " ")} · {technology.researchPointsRequired} RP
+        </div>
+        {aheadYears > 0 && (
+          <div className="mt-2 rounded bg-[#473b1e] px-2 py-1 text-[#ffe4a6]">
+            {aheadYears.toFixed(1)} years ahead of time · {penalty.toFixed(2)}x research requirement
+          </div>
+        )}
+        {technology.prerequisites.length > 0 && (
+          <div className="mt-2">
+            <span className="font-semibold">Prerequisites: </span>
+            {technology.prerequisites.map((id) => gameState.technologies[id]?.name ?? id).join(", ")}
+          </div>
+        )}
+        <div className="mt-2">
+          <span className="font-semibold">Effects: </span>
+          {technology.effects.join("; ")}
+        </div>
+        {technology.risks.length > 0 && (
+          <div className="mt-2 text-[#f0c6bd]">
+            <span className="font-semibold">Risks: </span>
+            {technology.risks.join("; ")}
+          </div>
+        )}
+        {!slotsAvailable && state === "available" && <div className="mt-2 text-[#ffe4a6]">All research slots are in use.</div>}
+      </div>
+    </div>
+  );
+}
+
+function buildTechnologyTooltip(technology: Technology, gameState: GameState): string {
+  const prerequisites =
+    technology.prerequisites.length > 0
+      ? technology.prerequisites.map((id) => gameState.technologies[id]?.name ?? id).join(", ")
+      : "None";
+  return `${technology.name}
+Year: ${technology.historicalYear}
+Cost: ${formatMoney(technology.researchCost)}
+Research points: ${technology.researchPointsRequired}
+Prerequisites: ${prerequisites}
+Effects: ${technology.effects.join("; ")}`;
 }
 
 function EmployeesTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
@@ -873,10 +1191,10 @@ function RangeControl({
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
+function ProgressBar({ value, compact = false }: { value: number; compact?: boolean }) {
   const normalized = Math.max(0, Math.min(100, value));
   return (
-    <div className="mt-3 h-2 overflow-hidden rounded bg-[#e8ece4]">
+    <div className={`${compact ? "mt-2 h-1.5" : "mt-3 h-2"} overflow-hidden rounded bg-[#e8ece4]`}>
       <div className="h-full bg-[#0f766e]" style={{ width: `${normalized}%` }} />
     </div>
   );
@@ -947,20 +1265,113 @@ function AircraftPlanform() {
 }
 
 function AircraftSpecimen({ input }: { input: AircraftDesignInput }) {
-  const length = Math.max(140, Math.min(260, input.fuselageLengthM * 4.2));
-  const wing = Math.max(80, Math.min(220, input.wingAreaM2 * 0.65));
+  const length = Math.max(150, Math.min(300, input.fuselageLengthM * 4.8));
+  const width = Math.max(12, Math.min(28, input.fuselageWidthM * 4.4));
+  const wing = Math.max(84, Math.min(240, input.wingAreaM2 * 0.72));
+  const sweep = Math.max(8, Math.min(40, input.wingSweepDeg));
+  const engineCount = Math.max(2, Math.min(4, input.engineCount));
+  const hasWinglets = input.technologyPackage.some((technologyId) =>
+    ["early-wingtip-devices", "advanced-winglets", "raked-wingtips"].includes(technologyId)
+  );
   return (
-    <div className="flex min-h-28 min-w-64 items-center justify-center rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-3">
-      <svg width="280" height="110" viewBox="0 0 280 110" role="img" aria-label={`${input.name} profile`}>
-        <path d={`M${140 - wing / 2} 52 L140 20 L${140 + wing / 2} 52 Z`} fill="#d9b45c" opacity="0.86" />
-        <path d={`M${140 - wing / 2 + 16} 62 L140 90 L${140 + wing / 2 - 16} 62 Z`} fill="#9fb4aa" opacity="0.8" />
-        <rect x={140 - length / 2} y="48" width={length} height="14" rx="7" fill="#0f766e" />
-        <path d={`M${140 + length / 2 - 10} 46 L${140 + length / 2 + 24} 34 L${140 + length / 2 + 14} 56 Z`} fill="#0b5f59" />
-        {Array.from({ length: Math.max(4, Math.floor(input.passengerCapacity / 32)) }, (_, index) => (
-          <circle key={index} cx={140 - length / 2 + 26 + index * 16} cy="55" r="2" fill="#f6fbfa" />
-        ))}
+    <div className="flex min-h-52 w-full min-w-64 items-center justify-center rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-3">
+      <svg width="420" height="250" viewBox="0 0 420 250" role="img" aria-label={`${input.name} aircraft drawing`}>
+        <defs>
+          <linearGradient id="fuselagePaint" x1="0" x2="1">
+            <stop offset="0%" stopColor="#e8efeb" />
+            <stop offset="55%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor="#cbd7d1" />
+          </linearGradient>
+          <linearGradient id="wingPaint" x1="0" x2="1">
+            <stop offset="0%" stopColor="#9bb0a6" />
+            <stop offset="100%" stopColor="#d6b45d" />
+          </linearGradient>
+        </defs>
+        <rect x="18" y="18" width="384" height="214" rx="8" fill="#edf2ee" />
+        <path d="M38 46 H382" stroke="#d5ddd8" strokeDasharray="7 8" />
+        <path d="M38 204 H382" stroke="#d5ddd8" strokeDasharray="7 8" />
+
+        <g transform="translate(210 86)">
+          <path
+            d={`M${-wing / 2} 0 L${-16 - sweep * 0.9} ${-34} L${18} -4 L${wing / 2} 0 L18 4 L${-16 - sweep * 0.9} 34 Z`}
+            fill="url(#wingPaint)"
+            stroke="#6c8177"
+            strokeWidth="1.5"
+          />
+          {hasWinglets && (
+            <>
+              <path d={`M${-wing / 2 - 2} -2 l-10 -18`} stroke="#2f7d73" strokeWidth="4" strokeLinecap="round" />
+              <path d={`M${wing / 2 + 2} -2 l10 -18`} stroke="#2f7d73" strokeWidth="4" strokeLinecap="round" />
+            </>
+          )}
+          <rect x={-length / 2} y={-width / 2} width={length} height={width} rx={width / 2} fill="url(#fuselagePaint)" stroke="#50625b" strokeWidth="1.5" />
+          <path d={`M${length / 2 - 14} ${-width / 2} L${length / 2 + 24} 0 L${length / 2 - 14} ${width / 2} Z`} fill="#2f7d73" />
+          <path d={`M${-length / 2 + 20} ${-width / 2} L${-length / 2 - 6} 0 L${-length / 2 + 20} ${width / 2} Z`} fill="#e8efeb" stroke="#50625b" strokeWidth="1" />
+          <path d={`M${length / 2 - 52} ${-width / 2} L${length / 2 - 18} ${-width * 2.6} L${length / 2 - 28} ${-width / 2}`} fill="#0f766e" opacity="0.92" />
+          <path d={`M${length / 2 - 52} ${width / 2} L${length / 2 - 18} ${width * 2.6} L${length / 2 - 28} ${width / 2}`} fill="#0f766e" opacity="0.82" />
+          {engineMounts(engineCount, wing).map((mount, index) => (
+            <ellipse key={index} cx={mount.x} cy={mount.y} rx="9" ry="6" fill="#26312e" stroke="#e4c967" strokeWidth="2" />
+          ))}
+        </g>
+
+        <g transform="translate(210 184)">
+          <path d={`M${-length / 2 + 12} 0 C${-length / 2 + 26} -17, ${length / 2 - 36} -18, ${length / 2 + 22} -2 C${length / 2 + 10} 11, ${-length / 2 + 30} 14, ${-length / 2 + 12} 0 Z`} fill="url(#fuselagePaint)" stroke="#50625b" strokeWidth="1.5" />
+          <path d={`M${length / 2 - 38} -6 L${length / 2 - 12} -42 L${length / 2 - 4} -3 Z`} fill="#0f766e" />
+          <path d={`M-16 4 L${-wing / 2 + 30} 30 L${wing / 2 - 24} 19 L24 1 Z`} fill="#d6b45d" opacity="0.78" stroke="#92763b" strokeWidth="1" />
+          {engineMounts(engineCount, wing * 0.62).map((mount, index) => (
+            <ellipse key={index} cx={mount.x * 0.72} cy="23" rx="10" ry="7" fill="#26312e" stroke="#9bb0a6" strokeWidth="2" />
+          ))}
+          {Array.from({ length: Math.max(5, Math.min(18, Math.floor(input.passengerCapacity / 22))) }, (_, index) => (
+            <rect key={index} x={-length / 2 + 38 + index * 14} y="-8" width="5" height="4" rx="1" fill="#2f7d73" opacity="0.82" />
+          ))}
+          <rect x={-length / 2 + 30} y="3" width={Math.max(70, length * 0.55)} height="3" rx="1.5" fill="#e4c967" />
+        </g>
       </svg>
     </div>
+  );
+}
+
+function engineMounts(engineCount: number, wing: number): { x: number; y: number }[] {
+  if (engineCount >= 4) {
+    return [
+      { x: -wing * 0.3, y: -18 },
+      { x: -wing * 0.16, y: 18 },
+      { x: wing * 0.16, y: -18 },
+      { x: wing * 0.3, y: 18 }
+    ];
+  }
+
+  if (engineCount === 3) {
+    return [
+      { x: -wing * 0.22, y: 18 },
+      { x: wing * 0.22, y: 18 },
+      { x: wing * 0.42, y: 0 }
+    ];
+  }
+
+  return [
+    { x: -wing * 0.24, y: 18 },
+    { x: wing * 0.24, y: 18 }
+  ];
+}
+
+function createDefaultDesignInputForUnlocked(
+  category: AircraftCategory,
+  name: string,
+  unlockedTechnologyIds: string[]
+): AircraftDesignInput {
+  const base = createDefaultDesignInput(category, name);
+  return sanitizeAircraftDesignInput(
+    {
+      ...base,
+      structuralMaterial: unlockedTechnologyIds.includes("improved-aluminum-alloys") ? "improved-aluminum" : "classic-aluminum",
+      engineType: unlockedTechnologyIds.includes("high-bypass-turbofans") ? "high-bypass-turbofan" : "low-bypass-turbofan",
+      avionicsPackage: unlockedTechnologyIds.includes("improved-avionics") ? "improved-analog" : "analog",
+      technologyPackage: unlockedTechnologyIds.filter((technologyId) =>
+        ["improved-aluminum-alloys", "high-bypass-turbofans", "improved-aerodynamics", "reliability-growth-testing"].includes(technologyId)
+      )
+    },
+    unlockedTechnologyIds
   );
 }
 

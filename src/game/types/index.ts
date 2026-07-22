@@ -38,6 +38,47 @@ export type OrderStatus = "active" | "delivering" | "completed" | "cancelled";
 
 export type EventType = "fixed-global" | "conditional-historical" | "emergent";
 
+export type TechnologyBranch =
+  | "propulsion"
+  | "aerodynamics"
+  | "structures"
+  | "avionics"
+  | "manufacturing"
+  | "safety"
+  | "cabin-operations";
+
+export type ResearchEraId =
+  | "first-generation-jet-age"
+  | "efficiency-deregulation"
+  | "digital-aviation"
+  | "global-twinjet"
+  | "composite-aviation"
+  | "sustainable-aviation";
+
+export type TechnologyEffectKey =
+  | "fuel"
+  | "weight"
+  | "reliability"
+  | "production"
+  | "development"
+  | "noise"
+  | "safety"
+  | "maintenance"
+  | "thrust"
+  | "certification"
+  | "airport"
+  | "airlineAppeal"
+  | "crewCost"
+  | "commonality"
+  | "supplierRisk"
+  | "complexity"
+  | "cost"
+  | "cabin"
+  | "operations"
+  | "tooling"
+  | "cybersecurity"
+  | "researchPenalty";
+
 export interface GameDate {
   year: number;
   month: number;
@@ -192,14 +233,22 @@ export interface AircraftVariant {
 export interface Technology {
   id: string;
   name: string;
+  branch: TechnologyBranch;
+  era: ResearchEraId;
   area: "materials" | "engines" | "aerodynamics" | "avionics" | "manufacturing" | "reliability" | "operations";
+  historicalYear: number;
   researchCost: number;
   researchPointsRequired: number;
   prerequisites: string[];
-  benefits: Partial<Record<"fuel" | "weight" | "reliability" | "production" | "development" | "noise" | "safety", number>>;
+  benefits: Partial<Record<TechnologyEffectKey, number>>;
+  effects: string[];
   risks: string[];
-  availableFromYear: number;
-  availableToYear?: number;
+  breakthroughPenaltyReduction?: number;
+  mutuallyExclusiveWith?: string[];
+  position: {
+    x: number;
+    y: number;
+  };
 }
 
 export interface ResearchProject {

@@ -12,7 +12,7 @@ describe("research progress", () => {
     const project = player.researchProjects[0]!;
     const draft = createFinancialDraft(player.id, 1);
 
-    processResearch(player, state.technologies, draft);
+    processResearch(player, state.technologies, draft, state.date.year);
 
     expect(project.progress).toBeGreaterThan(0);
     expect(draft.researchExpenses).toBe(8_000_000);

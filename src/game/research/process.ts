@@ -1,27 +1,28 @@
 import type { Manufacturer, ResearchProject, Technology } from "@/game/types";
 import type { FinancialDraft } from "@/game/finance/calculations";
+import {
+  canResearchTechnology as canResearchWithRules,
+  getEffectiveResearchPointsRequired
+} from "@/game/research/rules";
 
 export interface ResearchProcessResult {
   completedTechnologyNames: string[];
 }
 
-export function canResearchTechnology(manufacturer: Manufacturer, technology: Technology, year: number): boolean {
-  if (year < technology.availableFromYear) {
-    return false;
-  }
-  if (technology.availableToYear && year > technology.availableToYear) {
-    return false;
-  }
-  if (manufacturer.unlockedTechnologyIds.includes(technology.id)) {
-    return false;
-  }
-  return technology.prerequisites.every((id) => manufacturer.unlockedTechnologyIds.includes(id));
+export function canResearchTechnology(
+  manufacturer: Manufacturer,
+  technology: Technology,
+  year: number,
+  technologies: Record<string, Technology>
+): boolean {
+  return canResearchWithRules(manufacturer, technology, year, technologies);
 }
 
 export function processResearch(
   manufacturer: Manufacturer,
   technologies: Record<string, Technology>,
-  financial: FinancialDraft
+  financial: FinancialDraft,
+  year: number
 ): ResearchProcessResult {
   const completedTechnologyNames: string[] = [];
   const scientistGroup = manufacturer.employees.scientists;
@@ -44,11 +45,12 @@ export function processResearch(
     const skillEffect = scientistGroup.skill / 64;
     const points = assignedScientists * 0.018 * spendingEffect * moraleEffect * skillEffect;
 
-    project.progress = Math.min(technology.researchPointsRequired, project.progress + points);
+    const effectiveRequired = getEffectiveResearchPointsRequired(manufacturer, technology, year, technologies);
+    project.progress = Math.min(effectiveRequired, project.progress + points);
     manufacturer.cash -= project.monthlyBudget;
     financial.researchExpenses += project.monthlyBudget;
 
-    if (project.progress >= technology.researchPointsRequired) {
+    if (project.progress >= effectiveRequired) {
       project.status = "completed";
       if (!manufacturer.unlockedTechnologyIds.includes(technology.id)) {
         manufacturer.unlockedTechnologyIds.push(technology.id);
