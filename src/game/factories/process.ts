@@ -1,5 +1,5 @@
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
-import type { AircraftModel, AircraftOrder, Factory, Manufacturer } from "@/game/types";
+import type { AircraftModel, AircraftOrder, Factory, FactoryStatus, Manufacturer } from "@/game/types";
 import type { FinancialDraft } from "@/game/finance/calculations";
 import type { RandomSource } from "@/game/utils/prng";
 
@@ -7,8 +7,48 @@ export interface ProductionProcessResult {
   deliveries: string[];
 }
 
+export function getFactoryStatus(factory: Factory): FactoryStatus {
+  return factory.status ?? "active";
+}
+
+export function getFactoryAssignedWorkers(factory: Factory): number {
+  return factory.productionLines
+    .filter((line) => line.status === "active" && line.targetMonthlyRate > 0)
+    .reduce((sum, line) => sum + line.workersAssigned, 0);
+}
+
+export function getAssignedFactoryWorkers(manufacturer: Manufacturer, excludedFactoryId?: string): number {
+  return manufacturer.factories
+    .filter((factory) => factory.id !== excludedFactoryId && getFactoryStatus(factory) === "active")
+    .reduce((sum, factory) => sum + getFactoryAssignedWorkers(factory), 0);
+}
+
+export function processFactoryConstruction(manufacturer: Manufacturer): string[] {
+  const updates: string[] = [];
+
+  for (const factory of manufacturer.factories) {
+    if (getFactoryStatus(factory) !== "building") {
+      continue;
+    }
+
+    factory.constructionTurnsRemaining = Math.max(0, (factory.constructionTurnsRemaining ?? 0) - 1);
+    factory.idleSpace = 0;
+
+    if (factory.constructionTurnsRemaining === 0) {
+      factory.status = "active";
+      factory.idleSpace = factory.capacity;
+      updates.push(`${manufacturer.name} completed ${factory.name}${factory.country ? ` in ${factory.country}` : ""}.`);
+    }
+  }
+
+  return updates;
+}
+
 export function processFactoryExpenses(manufacturer: Manufacturer, financial: FinancialDraft): void {
   for (const factory of manufacturer.factories) {
+    if (getFactoryStatus(factory) !== "active") {
+      continue;
+    }
     manufacturer.cash -= factory.monthlyCost;
     financial.factoryExpenses += factory.monthlyCost;
   }
@@ -22,11 +62,18 @@ export function processProduction(
 ): ProductionProcessResult {
   const deliveries: string[] = [];
   const workerGroup = manufacturer.employees.factoryWorkers;
+  const assignedWorkers = getAssignedFactoryWorkers(manufacturer);
+  const laborAvailability = assignedWorkers > 0 ? Math.min(1, workerGroup.headcount / assignedWorkers) : 1;
   const orderQueue = Object.values(orders)
     .filter((order) => order.manufacturerId === manufacturer.id && (order.status === "active" || order.status === "delivering"))
     .sort((a, b) => a.orderTurn - b.orderTurn);
 
   for (const factory of manufacturer.factories) {
+    if (getFactoryStatus(factory) !== "active") {
+      factory.idleSpace = 0;
+      continue;
+    }
+
     let capacityRemaining = factory.capacity;
 
     for (const line of factory.productionLines) {
@@ -46,7 +93,7 @@ export function processProduction(
       }
 
       const workerNeed = Math.max(1, capacityLimitedRate * categoryCapacity * 95);
-      const workerEffect = Math.min(1.15, line.workersAssigned / workerNeed);
+      const workerEffect = Math.min(1.15, (line.workersAssigned * laborAvailability) / workerNeed);
       const productivityEffect = workerGroup.productivity / 70;
       const toolingEffect = line.toolingReadiness / 100;
       const produced = Math.max(
@@ -99,13 +146,14 @@ export function processProduction(
 }
 
 export function createProductionLine(model: AircraftModel, targetMonthlyRate: number) {
+  const roundedRate = Math.max(0, Math.round(targetMonthlyRate));
   return {
     id: `line-${model.id}`,
     modelId: model.id,
     category: model.category,
-    targetMonthlyRate,
-    status: "active" as const,
-    workersAssigned: Math.max(120, targetMonthlyRate * AIRCRAFT_CATEGORIES[model.category].factoryCapacityRequired * 120),
+    targetMonthlyRate: roundedRate,
+    status: roundedRate > 0 ? "active" as const : "idle" as const,
+    workersAssigned: roundedRate > 0 ? Math.max(120, roundedRate * AIRCRAFT_CATEGORIES[model.category].factoryCapacityRequired * 120) : 0,
     toolingReadiness: 82
   };
 }

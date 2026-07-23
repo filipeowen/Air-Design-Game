@@ -35,14 +35,40 @@ function factory(id: string, manufacturerId: string, location: Region, size: "sm
       .map((part) => part[0]?.toUpperCase() + part.slice(1))
       .join(" "),
     location,
+    country: defaultFactoryCountry(location),
     size,
     capacity,
     workerCount: capacity * 160,
     monthlyCost: capacity * 2_700_000,
+    status: "active",
+    constructionStartedTurn: 0,
+    constructionTurnsRemaining: 0,
     supportedCategories,
     productionLines: [],
     idleSpace: capacity
   };
+}
+
+function defaultFactoryCountry(location: Region): string {
+  if (location === "europe") {
+    return "France";
+  }
+  if (location === "latin-america") {
+    return "Brazil";
+  }
+  if (location === "asia-pacific") {
+    return "Japan";
+  }
+  if (location === "middle-east") {
+    return "United Arab Emirates";
+  }
+  if (location === "africa") {
+    return "South Africa";
+  }
+  if (location === "soviet-market") {
+    return "Soviet Union";
+  }
+  return "United States";
 }
 
 export function createBaseManufacturer(

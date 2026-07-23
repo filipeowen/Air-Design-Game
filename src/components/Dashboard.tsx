@@ -24,8 +24,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
+import { FACTORY_COUNTRIES } from "@/data/factoryCountries";
 import { RESEARCH_ERAS, TECHNOLOGY_BRANCHES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
+import { getAssignedFactoryWorkers, getFactoryAssignedWorkers, getFactoryStatus } from "@/game/factories/process";
 import { canResearchTechnology } from "@/game/research/process";
 import {
   getAheadOfTimePenaltyMultiplier,
@@ -39,6 +41,8 @@ import {
   assignPlayerProductionLine,
   buildPlayerFactory,
   changeEmployeeHeadcount,
+  closePlayerFactory,
+  idlePlayerFactoryProduction,
   launchPlayerAircraftProgram,
   sanitizeAircraftDesignInput,
   startPlayerResearch,
@@ -46,7 +50,7 @@ import {
 } from "@/game/simulation/actions";
 import { createNewGame } from "@/game/simulation/createGame";
 import { processMonthlyTurn } from "@/game/simulation/processMonthlyTurn";
-import type { AircraftCategory, AircraftDesignInput, GameState, MonthlyFinancialReport, Technology, TechnologyBranch } from "@/game/types";
+import type { AircraftCategory, AircraftDesignInput, Factory as FactoryRecord, FactoryStatus, GameState, MonthlyFinancialReport, Technology, TechnologyBranch } from "@/game/types";
 import { formatGameDate } from "@/game/utils/date";
 import { formatMoney } from "@/game/finance/calculations";
 import {
@@ -358,7 +362,7 @@ function OverviewTab({
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <Metric label="Certified models" value={player.aircraftModels.length.toString()} />
-          <Metric label="Active factories" value={player.factories.length.toString()} />
+          <Metric label="Active factories" value={player.factories.filter((factory) => getFactoryStatus(factory) === "active").length.toString()} />
           <Metric label="Research projects" value={activeResearch.length.toString()} />
         </div>
         <div className="mt-5">
@@ -943,49 +947,145 @@ function EmployeesTab({ gameState, mutateGame }: { gameState: GameState; mutateG
 function FactoriesTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
   const certifiedModels = player.aircraftModels.filter((model) => model.active);
+  const [selectedCountry, setSelectedCountry] = useState("United States");
+  const assignedWorkers = getAssignedFactoryWorkers(player);
+  const totalFactoryWorkers = player.employees.factoryWorkers.headcount;
+  const availableWorkers = Math.max(0, totalFactoryWorkers - assignedWorkers);
+
   return (
     <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Factories</h2>
-        <div className="flex flex-wrap gap-2">
-          <IconButton title="Build regional or narrow-body factory" icon={Plus} label="Medium" onClick={() => mutateGame((state) => buildPlayerFactory(state, "narrow-body"), "Factory expansion approved.")} />
-          <IconButton title="Build wide-body factory" icon={Plus} label="Large" onClick={() => mutateGame((state) => buildPlayerFactory(state, "wide-body"), "Wide-body factory approved.")} />
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm font-medium">
+            Country
+            <select
+              value={selectedCountry}
+              onChange={(event) => setSelectedCountry(event.target.value)}
+              className="focus-ring ml-2 rounded-md border border-[#d8ddd2] bg-white px-3 py-2"
+            >
+              {FACTORY_COUNTRIES.map((country) => (
+                <option key={country.name} value={country.name}>
+                  {country.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <IconButton title="Build regional or narrow-body factory" icon={Plus} label="Build Medium" onClick={() => mutateGame((state) => buildPlayerFactory(state, "narrow-body", selectedCountry), "Factory construction started.")} />
+          <IconButton title="Build wide-body factory" icon={Plus} label="Build Large" onClick={() => mutateGame((state) => buildPlayerFactory(state, "wide-body", selectedCountry), "Wide-body factory construction started.")} />
         </div>
       </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <Metric label="Factory workers" value={totalFactoryWorkers.toLocaleString()} />
+        <Metric label="Assigned to lines" value={assignedWorkers.toLocaleString()} />
+        <Metric label="Available workers" value={availableWorkers.toLocaleString()} />
+      </div>
       <div className="mt-4 grid gap-3">
-        {player.factories.map((factory) => (
-          <div key={factory.id} className="rounded-lg border border-[#d8ddd2] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">{factory.name}</h3>
-                <p className="mt-1 text-sm text-neutral-600">{factory.location.replaceAll("-", " ")} · {factory.size}</p>
-              </div>
-              <span className="text-sm text-neutral-600">{factory.idleSpace.toFixed(1)} idle capacity</span>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-4">
-              <Metric label="Capacity" value={factory.capacity.toString()} />
-              <Metric label="Workers" value={factory.workerCount.toLocaleString()} />
-              <Metric label="Monthly cost" value={formatMoney(factory.monthlyCost)} />
-              <Metric label="Lines" value={factory.productionLines.length.toString()} />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {certifiedModels
-                .filter((model) => factory.supportedCategories.includes(model.category))
-                .map((model) => (
+        {player.factories.map((factory) => {
+          const status = getFactoryStatus(factory);
+          const activeLine = factory.productionLines.find((line) => line.status === "active") ?? factory.productionLines[0];
+          const supportedModels = certifiedModels.filter((model) => factory.supportedCategories.includes(model.category));
+          const factoryAssignedWorkers = getFactoryAssignedWorkers(factory);
+          const canConfigure = status === "active" && supportedModels.length > 0;
+
+          return (
+            <div key={factory.id} className={`rounded-lg border p-4 ${status === "closed" ? "border-[#d8ddd2] bg-[#f8faf6]" : "border-[#d8ddd2]"}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold">{factory.name}</h3>
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${factoryStatusClass(status)}`}>{factoryStatusLabel(status)}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-neutral-600">
+                    {formatFactoryLocation(factory)} · {factory.size} · {factorySupportedCategories(factory)}
+                  </p>
+                </div>
+                {status !== "closed" && (
                   <IconButton
-                    key={model.id}
-                    title={`Assign ${model.name}`}
-                    icon={Plane}
-                    label={model.name}
-                    onClick={() => mutateGame((state) => assignPlayerProductionLine(state, model.id, model.category === "wide-body" ? 1 : 3), "Production line assigned.")}
+                    title="Close factory"
+                    icon={Trash2}
+                    label="Close"
+                    danger
+                    onClick={() => mutateGame((state) => closePlayerFactory(state, factory.id), `${factory.name} closed.`)}
                   />
-                ))}
+                )}
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-4">
+                <Metric label="Capacity" value={status === "active" ? factory.capacity.toString() : "0"} />
+                <Metric label="Idle capacity" value={status === "active" ? factory.idleSpace.toFixed(1) : "0"} />
+                <Metric label="Workers assigned" value={factoryAssignedWorkers.toLocaleString()} />
+                <Metric label="Operating cost" value={status === "active" ? formatMoney(factory.monthlyCost) : "$0"} />
+              </div>
+              {status === "building" && (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Construction has {factory.constructionTurnsRemaining ?? 0} months remaining.
+                </div>
+              )}
+              <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                <label className="block text-sm font-medium">
+                  Aircraft built here
+                  <select
+                    value={activeLine?.modelId ?? ""}
+                    disabled={!canConfigure}
+                    onChange={(event) => {
+                      const modelId = event.target.value;
+                      mutateGame(
+                        (state) => (modelId ? assignPlayerProductionLine(state, factory.id, modelId) : idlePlayerFactoryProduction(state, factory.id)),
+                        modelId ? "Factory production updated." : "Factory production idled."
+                      );
+                    }}
+                    className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] bg-white px-3 py-2"
+                  >
+                    <option value="">Idle / no aircraft</option>
+                    {supportedModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} · {AIRCRAFT_CATEGORIES[model.category].label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="rounded-md bg-[#f4f5f1] px-3 py-2 text-sm">
+                  <span className="block text-xs font-medium uppercase text-neutral-500">Target rate</span>
+                  <span className="mt-1 block font-semibold">{activeLine ? `${activeLine.targetMonthlyRate}/mo` : "Idle"}</span>
+                </div>
+              </div>
+              {status === "active" && supportedModels.length === 0 && (
+                <p className="mt-3 text-sm text-neutral-600">No certified aircraft fit this factory yet.</p>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
+}
+
+function factoryStatusLabel(status: FactoryStatus): string {
+  if (status === "building") {
+    return "Building";
+  }
+  if (status === "closed") {
+    return "Closed";
+  }
+  return "Active";
+}
+
+function factoryStatusClass(status: FactoryStatus): string {
+  if (status === "building") {
+    return "bg-amber-100 text-amber-900";
+  }
+  if (status === "closed") {
+    return "bg-neutral-200 text-neutral-700";
+  }
+  return "bg-emerald-100 text-emerald-800";
+}
+
+function formatFactoryLocation(factory: FactoryRecord): string {
+  return factory.country ?? factory.location.replaceAll("-", " ");
+}
+
+function factorySupportedCategories(factory: FactoryRecord): string {
+  return factory.supportedCategories.map((category) => AIRCRAFT_CATEGORIES[category].label).join(", ");
 }
 
 function OrdersTab({ gameState }: { gameState: GameState }) {

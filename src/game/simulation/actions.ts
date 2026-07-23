@@ -1,10 +1,11 @@
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
+import { getFactoryRegionForCountry } from "@/data/factoryCountries";
 import { calculateAircraftDesign } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
-import { createProductionLine } from "@/game/factories/process";
+import { createProductionLine, getAssignedFactoryWorkers, getFactoryStatus } from "@/game/factories/process";
 import { canResearchTechnology, createResearchProject } from "@/game/research/process";
 import { hasResearchSlotAvailable } from "@/game/research/rules";
-import type { AircraftCategory, AircraftDesignInput, Factory, GameState } from "@/game/types";
+import type { AircraftCategory, AircraftDesignInput, AircraftModel, Factory, GameState, Manufacturer } from "@/game/types";
 
 export function launchPlayerAircraftProgram(state: GameState, input: AircraftDesignInput): GameState {
   const next = structuredClone(state);
@@ -174,53 +175,153 @@ export function changeEmployeeHeadcount(state: GameState, role: keyof GameState[
   const group = player.employees[role];
   group.headcount = Math.max(0, group.headcount + delta);
   group.morale = Math.max(25, Math.min(95, group.morale + (delta >= 0 ? 1 : -3)));
+  if (role === "factoryWorkers") {
+    rebalanceFactoryWorkers(player);
+  }
   return next;
 }
 
-export function buildPlayerFactory(state: GameState, category: AircraftCategory): GameState {
+export function buildPlayerFactory(state: GameState, category: AircraftCategory, country = "United States"): GameState {
   const next = structuredClone(state);
   const player = next.manufacturers[next.playerCompanyId];
   if (!player) {
     throw new Error("Player company is missing.");
   }
 
+  const isWideBody = category === "wide-body";
+  const capacity = isWideBody ? 12 : 8;
   const factory: Factory = {
-    id: `factory-player-${next.turn}-${category}`,
+    id: `factory-player-${next.turn}-${category}-${player.factories.length + 1}`,
     manufacturerId: player.id,
-    name: category === "wide-body" ? "High Bay Assembly" : "Expansion Assembly Hall",
-    location: "north-america",
-    size: category === "wide-body" ? "large" : "medium",
-    capacity: category === "wide-body" ? 12 : 8,
-    workerCount: category === "wide-body" ? 2_400 : 1_400,
-    monthlyCost: category === "wide-body" ? 32_000_000 : 16_000_000,
-    supportedCategories: category === "wide-body" ? ["wide-body"] : ["regional-jet", "narrow-body"],
+    name: isWideBody ? "High Bay Assembly" : "Expansion Assembly Hall",
+    location: getFactoryRegionForCountry(country),
+    country,
+    size: isWideBody ? "large" : "medium",
+    capacity,
+    workerCount: 0,
+    monthlyCost: isWideBody ? 32_000_000 : 16_000_000,
+    status: "building",
+    constructionStartedTurn: next.turn,
+    constructionTurnsRemaining: isWideBody ? 30 : 18,
+    supportedCategories: isWideBody ? ["wide-body"] : ["regional-jet", "narrow-body"],
     productionLines: [],
-    idleSpace: category === "wide-body" ? 12 : 8
+    idleSpace: 0
   };
 
-  const buildCost = category === "wide-body" ? 850_000_000 : 380_000_000;
+  const buildCost = isWideBody ? 850_000_000 : 380_000_000;
   player.cash -= buildCost;
   player.factories.push(factory);
   return next;
 }
 
-export function assignPlayerProductionLine(state: GameState, modelId: string, targetMonthlyRate: number): GameState {
+export function closePlayerFactory(state: GameState, factoryId: string): GameState {
   const next = structuredClone(state);
   const player = next.manufacturers[next.playerCompanyId];
-  const model = player?.aircraftModels.find((candidate) => candidate.id === modelId);
-  if (!player || !model) {
+  const factory = player?.factories.find((candidate) => candidate.id === factoryId);
+  if (!player || !factory || getFactoryStatus(factory) === "closed") {
     return next;
   }
-  const factory = player.factories.find((candidate) => candidate.supportedCategories.includes(model.category));
-  if (!factory) {
-    return next;
-  }
-  const existing = factory.productionLines.find((line) => line.modelId === model.id);
-  if (existing) {
-    existing.targetMonthlyRate = Math.max(0, Math.round(targetMonthlyRate));
-    existing.status = existing.targetMonthlyRate > 0 ? "active" : "idle";
-  } else {
-    factory.productionLines.push(createProductionLine(model, Math.max(0, Math.round(targetMonthlyRate))));
-  }
+
+  factory.status = "closed";
+  factory.closedTurn = next.turn;
+  factory.idleSpace = 0;
+  factory.productionLines = factory.productionLines.map((line) => ({
+    ...line,
+    status: "idle",
+    targetMonthlyRate: 0,
+    workersAssigned: 0
+  }));
   return next;
+}
+
+export function idlePlayerFactoryProduction(state: GameState, factoryId: string): GameState {
+  const next = structuredClone(state);
+  const player = next.manufacturers[next.playerCompanyId];
+  const factory = player?.factories.find((candidate) => candidate.id === factoryId);
+  if (!player || !factory) {
+    return next;
+  }
+  factory.productionLines = [];
+  factory.idleSpace = getFactoryStatus(factory) === "active" ? factory.capacity : 0;
+  return next;
+}
+
+export function assignPlayerProductionLine(state: GameState, factoryId: string, modelId: string, targetMonthlyRate?: number): GameState;
+export function assignPlayerProductionLine(state: GameState, modelId: string, targetMonthlyRate: number): GameState;
+export function assignPlayerProductionLine(
+  state: GameState,
+  factoryIdOrModelId: string,
+  modelIdOrTargetMonthlyRate: string | number,
+  targetMonthlyRate?: number
+): GameState {
+  const next = structuredClone(state);
+  const player = next.manufacturers[next.playerCompanyId];
+  if (!player) {
+    return next;
+  }
+
+  const explicitFactory = typeof modelIdOrTargetMonthlyRate === "string";
+  const modelId = explicitFactory ? modelIdOrTargetMonthlyRate : factoryIdOrModelId;
+  const model = player.aircraftModels.find((candidate) => candidate.id === modelId && candidate.active);
+  if (!model) {
+    return next;
+  }
+
+  const factory = explicitFactory
+    ? player.factories.find((candidate) => candidate.id === factoryIdOrModelId)
+    : player.factories.find((candidate) => getFactoryStatus(candidate) === "active" && candidate.supportedCategories.includes(model.category));
+
+  if (!factory || getFactoryStatus(factory) !== "active" || !factory.supportedCategories.includes(model.category)) {
+    return next;
+  }
+
+  const rate = explicitFactory
+    ? targetMonthlyRate ?? defaultProductionRate(model)
+    : typeof modelIdOrTargetMonthlyRate === "number"
+      ? modelIdOrTargetMonthlyRate
+      : defaultProductionRate(model);
+  const capacityRate = Math.max(0, Math.floor(factory.capacity / AIRCRAFT_CATEGORIES[model.category].factoryCapacityRequired));
+  const line = createProductionLine(model, Math.min(capacityRate, Math.max(0, Math.round(rate))));
+  const availableWorkers = Math.max(0, player.employees.factoryWorkers.headcount - getAssignedFactoryWorkers(player, factory.id));
+  line.workersAssigned = Math.min(line.workersAssigned, availableWorkers);
+  line.status = line.targetMonthlyRate > 0 && line.workersAssigned > 0 ? "active" : "idle";
+  factory.productionLines = line.targetMonthlyRate > 0 ? [line] : [];
+  factory.idleSpace = Math.max(0, factory.capacity - line.targetMonthlyRate * AIRCRAFT_CATEGORIES[model.category].factoryCapacityRequired);
+  return next;
+}
+
+function defaultProductionRate(model: AircraftModel): number {
+  if (model.category === "wide-body") {
+    return 1;
+  }
+  if (model.category === "narrow-body") {
+    return 3;
+  }
+  return 4;
+}
+
+function rebalanceFactoryWorkers(manufacturer: Manufacturer): void {
+  const assignedWorkers = getAssignedFactoryWorkers(manufacturer);
+  const availableWorkers = manufacturer.employees.factoryWorkers.headcount;
+  if (assignedWorkers <= availableWorkers) {
+    return;
+  }
+
+  const ratio = availableWorkers > 0 ? availableWorkers / assignedWorkers : 0;
+  for (const factory of manufacturer.factories) {
+    if (getFactoryStatus(factory) !== "active") {
+      continue;
+    }
+
+    for (const line of factory.productionLines) {
+      if (line.status !== "active") {
+        continue;
+      }
+      line.workersAssigned = Math.floor(line.workersAssigned * ratio);
+      if (line.workersAssigned <= 0) {
+        line.status = "idle";
+        line.targetMonthlyRate = 0;
+      }
+    }
+  }
 }

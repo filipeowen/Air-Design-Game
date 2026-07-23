@@ -32,6 +32,8 @@ export type ResearchStatus = "active" | "paused" | "completed";
 
 export type FactorySize = "small" | "medium" | "large";
 
+export type FactoryStatus = "building" | "active" | "closed";
+
 export type ProductionLineStatus = "active" | "idle" | "retooling";
 
 export type OrderStatus = "active" | "delivering" | "completed" | "cancelled";
@@ -266,10 +268,15 @@ export interface Factory {
   manufacturerId: string;
   name: string;
   location: Region;
+  country?: string;
   size: FactorySize;
   capacity: number;
   workerCount: number;
   monthlyCost: number;
+  status?: FactoryStatus;
+  constructionStartedTurn?: number;
+  constructionTurnsRemaining?: number;
+  closedTurn?: number;
   supportedCategories: AircraftCategory[];
   productionLines: ProductionLine[];
   idleSpace: number;

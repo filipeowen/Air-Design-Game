@@ -2,7 +2,7 @@ import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
 import { TECHNOLOGIES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
-import { createProductionLine } from "@/game/factories/process";
+import { createProductionLine, getFactoryStatus } from "@/game/factories/process";
 import { canResearchTechnology, createResearchProject } from "@/game/research/process";
 import { getResearchSlotCount } from "@/game/research/rules";
 import type { AircraftCategory, Manufacturer, MarketSegment, Technology } from "@/game/types";
@@ -149,7 +149,9 @@ function openProductionLineIfNeeded(manufacturer: Manufacturer, actions: string[
       continue;
     }
 
-    const factory = manufacturer.factories.find((candidate) => candidate.supportedCategories.includes(model.category));
+    const factory = manufacturer.factories.find(
+      (candidate) => getFactoryStatus(candidate) === "active" && candidate.supportedCategories.includes(model.category)
+    );
     if (!factory) {
       continue;
     }

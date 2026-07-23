@@ -1,7 +1,7 @@
 import { finalizeFinancialDraft, createFinancialDraft, calculatePayroll } from "@/game/finance/calculations";
 import { processCompetitorDecisions } from "@/game/competitors/ai";
 import { processDevelopment } from "@/game/development/process";
-import { processFactoryExpenses, processProduction } from "@/game/factories/process";
+import { processFactoryConstruction, processFactoryExpenses, processProduction } from "@/game/factories/process";
 import { processMarketAndEvents } from "@/game/market/events";
 import { processAirlineOrders, processProgressPayments } from "@/game/orders/airlineDecisions";
 import { processResearch } from "@/game/research/process";
@@ -41,6 +41,7 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
     const development = processDevelopment(manufacturer, rng, financial, turn);
     developmentUpdates.push(...development.updates);
 
+    developmentUpdates.push(...processFactoryConstruction(manufacturer));
     processFactoryExpenses(manufacturer, financial);
   }
 
