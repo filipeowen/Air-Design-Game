@@ -93,6 +93,7 @@ type Tab =
 
 const TABS: { id: Tab; label: string; icon: typeof Gauge }[] = [
   { id: "overview", label: "Overview", icon: Gauge },
+  { id: "inbox", label: "Inbox", icon: Mail },
   { id: "aircraft", label: "Aircraft", icon: Plane },
   { id: "development", label: "Development", icon: BriefcaseBusiness },
   { id: "research", label: "Research", icon: FlaskConical },
@@ -101,7 +102,6 @@ const TABS: { id: Tab; label: string; icon: typeof Gauge }[] = [
   { id: "orders", label: "Orders", icon: PackageCheck },
   { id: "competitors", label: "Competitors", icon: Building2 },
   { id: "finances", label: "Finances", icon: Banknote },
-  { id: "inbox", label: "Inbox", icon: Mail },
   { id: "saves", label: "Saves", icon: Save }
 ];
 
