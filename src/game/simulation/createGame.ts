@@ -4,6 +4,7 @@ import { STARTING_MARKETS } from "@/data/market";
 import { TECHNOLOGIES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
+import { createOpeningEmails } from "@/game/email/messages";
 import { createEmployeeGroup } from "@/game/employees/defaults";
 import { createProductionLine } from "@/game/factories/process";
 import type {
@@ -46,7 +47,7 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
   const manufacturers = Object.fromEntries([player, ...competitors].map((manufacturer) => [manufacturer.id, manufacturer])) as Record<string, Manufacturer>;
   seedRelationships(manufacturers, airlines, rng);
 
-  return {
+  const state: GameState = {
     settings: {
       difficulty: "standard",
       autosave: true,
@@ -64,8 +65,11 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
     orders: {},
     eventHistory: [],
     randomEventHistory: [],
-    monthlyHistory: []
+    monthlyHistory: [],
+    emails: []
   };
+  state.emails = createOpeningEmails(state);
+  return state;
 }
 
 function createPlayerManufacturer(companyName: string): Manufacturer {

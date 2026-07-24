@@ -1,6 +1,7 @@
 import { finalizeFinancialDraft, createFinancialDraft, calculatePayroll } from "@/game/finance/calculations";
 import { processCompetitorDecisions } from "@/game/competitors/ai";
 import { processDevelopment } from "@/game/development/process";
+import { createTurnEmails, ensureEmailInbox, trimInbox } from "@/game/email/messages";
 import { processFactoryConstruction, processFactoryExpenses, processProduction } from "@/game/factories/process";
 import { processMarketAndEvents } from "@/game/market/events";
 import { processAirlineOrders, processProgressPayments } from "@/game/orders/airlineDecisions";
@@ -111,6 +112,8 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
     warnings
   };
 
+  ensureEmailInbox(next).push(...createTurnEmails(next, report));
+  trimInbox(next);
   next.monthlyHistory.push(report);
   if (next.monthlyHistory.length > 240) {
     next.monthlyHistory = next.monthlyHistory.slice(-240);

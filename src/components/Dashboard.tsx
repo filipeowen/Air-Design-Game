@@ -12,11 +12,13 @@ import {
   FlaskConical,
   Gauge,
   Lock,
+  Mail,
+  MailCheck,
+  MailOpen,
   PackageCheck,
   Plane,
   Play,
   Plus,
-  RadioTower,
   Save,
   Trash2,
   TrendingUp,
@@ -27,6 +29,7 @@ import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
 import { FACTORY_COUNTRIES } from "@/data/factoryCountries";
 import { RESEARCH_ERAS, TECHNOLOGY_BRANCHES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
+import { getGameEmails } from "@/game/email/messages";
 import { getAssignedFactoryWorkers, getFactoryAssignedWorkers, getFactoryStatus } from "@/game/factories/process";
 import { canResearchTechnology } from "@/game/research/process";
 import {
@@ -44,13 +47,27 @@ import {
   closePlayerFactory,
   idlePlayerFactoryProduction,
   launchPlayerAircraftProgram,
+  markAllPlayerEmailsRead,
+  markPlayerEmailRead,
   sanitizeAircraftDesignInput,
   startPlayerResearch,
   updatePlayerProgram
 } from "@/game/simulation/actions";
 import { createNewGame } from "@/game/simulation/createGame";
 import { processMonthlyTurn } from "@/game/simulation/processMonthlyTurn";
-import type { AircraftCategory, AircraftDesignInput, Factory as FactoryRecord, FactoryStatus, GameState, MonthlyFinancialReport, Technology, TechnologyBranch } from "@/game/types";
+import type {
+  AircraftCategory,
+  AircraftDesignInput,
+  Factory as FactoryRecord,
+  FactoryStatus,
+  GameEmail,
+  GameEmailCategory,
+  GameEmailPriority,
+  GameState,
+  MonthlyFinancialReport,
+  Technology,
+  TechnologyBranch
+} from "@/game/types";
 import { formatGameDate } from "@/game/utils/date";
 import { formatMoney } from "@/game/finance/calculations";
 import {
@@ -71,7 +88,7 @@ type Tab =
   | "orders"
   | "competitors"
   | "finances"
-  | "news"
+  | "inbox"
   | "saves";
 
 const TABS: { id: Tab; label: string; icon: typeof Gauge }[] = [
@@ -84,13 +101,25 @@ const TABS: { id: Tab; label: string; icon: typeof Gauge }[] = [
   { id: "orders", label: "Orders", icon: PackageCheck },
   { id: "competitors", label: "Competitors", icon: Building2 },
   { id: "finances", label: "Finances", icon: Banknote },
-  { id: "news", label: "News", icon: RadioTower },
+  { id: "inbox", label: "Inbox", icon: Mail },
   { id: "saves", label: "Saves", icon: Save }
+];
+
+const EMAIL_FILTERS: { id: GameEmailCategory | "all"; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "executive", label: "Executive" },
+  { id: "research", label: "Research" },
+  { id: "development", label: "Programs" },
+  { id: "airline", label: "Airlines" },
+  { id: "operations", label: "Ops" },
+  { id: "market", label: "News" },
+  { id: "competitor", label: "Intel" },
+  { id: "finance", label: "Finance" }
 ];
 
 export function Dashboard() {
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [activeTab, setActiveTab] = useState<Tab>("inbox");
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
   const [designInput, setDesignInput] = useState<AircraftDesignInput>(() =>
     createDefaultDesignInputForUnlocked("regional-jet", "Pioneer RJ-70", ["improved-aluminum-alloys"])
@@ -132,6 +161,8 @@ export function Dashboard() {
   );
   const backlog = playerOrders.reduce((sum, order) => sum + Math.max(0, order.quantity - order.delivered), 0);
   const playerDeliveryEvents = lastReport && player ? lastReport.deliveries.filter((delivery) => delivery.startsWith(`${player.name} delivered`)).length : 0;
+  const emails = gameState ? getGameEmails(gameState) : [];
+  const unreadEmailCount = emails.filter((email) => !email.read).length;
 
   if (!gameState || !player) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-700">Loading campaign...</div>;
@@ -142,8 +173,10 @@ export function Dashboard() {
       return;
     }
     const result = processMonthlyTurn(gameState);
+    const newEmailCount = Math.max(0, getGameEmails(result.gameState).length - getGameEmails(gameState).length);
     setGameState(result.gameState);
-    setStatusMessage(result.report.summary);
+    setActiveTab("inbox");
+    setStatusMessage(`Inbox received ${newEmailCount} new message${newEmailCount === 1 ? "" : "s"}.`);
     if (result.gameState.settings.autosave) {
       await saveGameToSlot("autosave", result.gameState);
       setSaveSlots(listLocalSaves());
@@ -239,7 +272,7 @@ export function Dashboard() {
             activePrograms={player.aircraftPrograms.filter((program) => program.status === "active").length}
             backlog={backlog}
             deliveries={playerDeliveryEvents}
-            marketShare={player.marketShare["narrow-body"]}
+            unreadEmails={unreadEmailCount}
           />
 
           {activeTab === "overview" && (
@@ -287,7 +320,7 @@ export function Dashboard() {
           {activeTab === "orders" && <OrdersTab gameState={gameState} />}
           {activeTab === "competitors" && <CompetitorsTab gameState={gameState} />}
           {activeTab === "finances" && <FinancesTab gameState={gameState} />}
-          {activeTab === "news" && <NewsTab gameState={gameState} />}
+          {activeTab === "inbox" && <InboxTab key={gameState.turn} gameState={gameState} mutateGame={mutateGame} />}
           {activeTab === "saves" && (
             <SavesTab saveSlots={saveSlots} loadSlot={loadSlot} deleteSlot={deleteSlot} manualSave={manualSave} />
           )}
@@ -303,14 +336,14 @@ function KpiStrip({
   activePrograms,
   backlog,
   deliveries,
-  marketShare
+  unreadEmails
 }: {
   cash: number;
   financial?: MonthlyFinancialReport;
   activePrograms: number;
   backlog: number;
   deliveries: number;
-  marketShare: number;
+  unreadEmails: number;
 }) {
   const items = [
     { label: "Cash", value: formatMoney(cash), icon: Banknote },
@@ -318,7 +351,7 @@ function KpiStrip({
     { label: "Programs", value: String(activePrograms), icon: BriefcaseBusiness },
     { label: "Backlog", value: `${backlog}`, icon: PackageCheck },
     { label: "Deliveries", value: `${deliveries}`, icon: Plane },
-    { label: "Narrow-body share", value: `${marketShare.toFixed(1)}%`, icon: Gauge }
+    { label: "Unread inbox", value: `${unreadEmails}`, icon: MailOpen }
   ];
 
   return (
@@ -352,6 +385,7 @@ function OverviewTab({
   const lastReport = gameState.monthlyHistory.at(-1);
   const activeResearch = player.researchProjects.filter((project) => project.status === "active");
   const warnings = [...(playerFinancial?.warnings ?? []), ...(lastReport?.warnings ?? [])];
+  const latestEmails = sortEmails(getGameEmails(gameState)).slice(0, 4);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -366,8 +400,18 @@ function OverviewTab({
           <Metric label="Research projects" value={activeResearch.length.toString()} />
         </div>
         <div className="mt-5">
-          <h3 className="text-sm font-semibold text-neutral-700">Monthly report</h3>
-          <p className="mt-2 text-sm leading-6 text-neutral-700">{lastReport?.summary ?? "January 1970: the board is waiting for the first plan."}</p>
+          <h3 className="text-sm font-semibold text-neutral-700">Latest Messages</h3>
+          <div className="mt-2 space-y-2">
+            {latestEmails.map((email) => (
+              <div key={email.id} className="rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="font-semibold">{email.subject}</span>
+                  <span className="text-xs text-neutral-500">{formatGameDate(email.date)}</span>
+                </div>
+                <p className="mt-1 text-sm text-neutral-600">{email.preview}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
       <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
@@ -1203,30 +1247,212 @@ function FinancesTab({ gameState }: { gameState: GameState }) {
   );
 }
 
-function NewsTab({ gameState }: { gameState: GameState }) {
-  const reports = gameState.monthlyHistory.slice(-12).reverse();
+function InboxTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
+  const emails = sortEmails(getGameEmails(gameState));
+  const [filter, setFilter] = useState<GameEmailCategory | "all">("all");
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(emails[0]?.id ?? null);
+  const filteredEmails = emails.filter((email) => filter === "all" || email.category === filter);
+  const selectedEmail = filteredEmails.find((email) => email.id === selectedEmailId) ?? filteredEmails[0] ?? null;
+  const unreadCount = emails.filter((email) => !email.read).length;
+
+  function openEmail(email: GameEmail) {
+    setSelectedEmailId(email.id);
+    if (!email.read) {
+      mutateGame((state) => markPlayerEmailRead(state, email.id), "Email opened.");
+    }
+  }
+
   return (
     <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-      <h2 className="text-lg font-semibold">News</h2>
-      <div className="mt-4 space-y-3">
-        {reports.length === 0 ? (
-          <p className="text-sm text-neutral-600">No reports yet.</p>
-        ) : (
-          reports.map((report) => (
-            <div key={report.turn} className="rounded-lg border border-[#d8ddd2] p-4">
-              <h3 className="font-semibold">{formatGameDate(report.date)}</h3>
-              <p className="mt-1 text-sm text-neutral-700">{report.summary}</p>
-              {[...report.researchCompleted, ...report.developmentUpdates, ...report.orders, ...report.deliveries, ...report.competitorActions]
-                .slice(0, 5)
-                .map((item) => (
-                  <p key={item} className="mt-2 text-sm text-neutral-600">{item}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Company Inbox</h2>
+          <p className="mt-1 text-sm text-neutral-600">{unreadCount} unread · {emails.length} total messages</p>
+        </div>
+        <IconButton
+          title="Mark all emails read"
+          icon={MailCheck}
+          label="Mark Read"
+          onClick={() => mutateGame(markAllPlayerEmailsRead, "Inbox cleared.")}
+        />
+      </div>
+
+      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+        {EMAIL_FILTERS.map((item) => {
+          const active = filter === item.id;
+          const count = item.id === "all" ? emails.length : emails.filter((email) => email.category === item.id).length;
+          return (
+            <button
+              key={item.id}
+              onClick={() => {
+                setFilter(item.id);
+                setSelectedEmailId(null);
+              }}
+              className={`focus-ring inline-flex min-w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition ${
+                active ? "border-[#0f766e] bg-[#0f766e] text-white" : "border-[#d8ddd2] bg-white text-neutral-700 hover:bg-[#eef3ee]"
+              }`}
+            >
+              <span>{item.label}</span>
+              <span className={active ? "text-white/80" : "text-neutral-500"}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[380px_1fr]">
+        <div className="max-h-[620px] overflow-y-auto rounded-lg border border-[#d8ddd2]">
+          {filteredEmails.length === 0 ? (
+            <div className="p-4 text-sm text-neutral-600">No messages in this folder.</div>
+          ) : (
+            filteredEmails.map((email) => {
+              const selected = selectedEmail?.id === email.id;
+              const Icon = email.read ? MailOpen : Mail;
+              return (
+                <button
+                  key={email.id}
+                  onClick={() => openEmail(email)}
+                  className={`focus-ring block w-full border-b border-[#edf0ea] px-4 py-3 text-left transition last:border-b-0 ${
+                    selected ? "bg-[#e8f2ef]" : email.read ? "bg-white hover:bg-[#f8faf6]" : "bg-[#fffaf0] hover:bg-[#fff6df]"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <Icon size={18} className={email.read ? "mt-0.5 text-neutral-500" : "mt-0.5 text-[#b7791f]"} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="truncate text-sm font-semibold">{email.from}</span>
+                        <span className="shrink-0 text-xs text-neutral-500">{formatGameDate(email.date)}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className={`h-2 w-2 rounded-full ${emailCategoryDot(email.category)}`} />
+                        <span className={`truncate text-sm ${email.read ? "font-medium text-neutral-700" : "font-semibold text-[#17211c]"}`}>
+                          {email.subject}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-sm text-neutral-600">{email.preview}</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div className="min-h-[460px] rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-5">
+          {!selectedEmail ? (
+            <div className="flex h-full items-center justify-center text-sm text-neutral-600">No email selected.</div>
+          ) : (
+            <div>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#d8ddd2] pb-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${emailPriorityClass(selectedEmail.priority)}`}>
+                      {emailPriorityLabel(selectedEmail.priority)}
+                    </span>
+                    <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-neutral-600">
+                      {emailCategoryLabel(selectedEmail.category)}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-xl font-semibold tracking-normal">{selectedEmail.subject}</h3>
+                  <p className="mt-2 text-sm text-neutral-600">
+                    From {selectedEmail.from} to {selectedEmail.to} · {formatGameDate(selectedEmail.date)}
+                  </p>
+                </div>
+                {!selectedEmail.read && (
+                  <IconButton
+                    title="Mark email read"
+                    icon={MailCheck}
+                    label="Read"
+                    onClick={() => mutateGame((state) => markPlayerEmailRead(state, selectedEmail.id), "Email opened.")}
+                  />
+                )}
+              </div>
+              <div className="mt-5 space-y-4 text-sm leading-6 text-neutral-800">
+                {selectedEmail.body.map((paragraph, index) => (
+                  <p key={`${selectedEmail.id}-${index}`}>{paragraph}</p>
                 ))}
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <Metric label="Turn" value={selectedEmail.turn.toString()} />
+                <Metric label="Priority" value={emailPriorityLabel(selectedEmail.priority)} />
+                <Metric label="Status" value={selectedEmail.read ? "Read" : "Unread"} />
+              </div>
             </div>
-          ))
-        )}
+          )}
+        </div>
       </div>
     </section>
   );
+}
+
+function sortEmails(emails: GameEmail[]): GameEmail[] {
+  const priorityRank: Record<GameEmailPriority, number> = {
+    urgent: 4,
+    high: 3,
+    normal: 2,
+    low: 1
+  };
+  return [...emails].sort((a, b) => b.turn - a.turn || priorityRank[b.priority] - priorityRank[a.priority] || b.id.localeCompare(a.id));
+}
+
+function emailCategoryLabel(category: GameEmailCategory): string {
+  if (category === "airline") {
+    return "Airline";
+  }
+  if (category === "competitor") {
+    return "Market Intel";
+  }
+  if (category === "development") {
+    return "Program";
+  }
+  return `${category[0]?.toUpperCase() ?? ""}${category.slice(1)}`;
+}
+
+function emailCategoryDot(category: GameEmailCategory): string {
+  if (category === "research") {
+    return "bg-sky-500";
+  }
+  if (category === "development") {
+    return "bg-violet-500";
+  }
+  if (category === "airline") {
+    return "bg-emerald-500";
+  }
+  if (category === "market") {
+    return "bg-amber-500";
+  }
+  if (category === "finance") {
+    return "bg-red-500";
+  }
+  if (category === "competitor") {
+    return "bg-stone-500";
+  }
+  return "bg-[#0f766e]";
+}
+
+function emailPriorityLabel(priority: GameEmailPriority): string {
+  if (priority === "urgent") {
+    return "Urgent";
+  }
+  if (priority === "high") {
+    return "High";
+  }
+  if (priority === "low") {
+    return "Low";
+  }
+  return "Normal";
+}
+
+function emailPriorityClass(priority: GameEmailPriority): string {
+  if (priority === "urgent") {
+    return "bg-red-100 text-red-800";
+  }
+  if (priority === "high") {
+    return "bg-amber-100 text-amber-900";
+  }
+  if (priority === "low") {
+    return "bg-neutral-200 text-neutral-700";
+  }
+  return "bg-emerald-100 text-emerald-800";
 }
 
 function SavesTab({

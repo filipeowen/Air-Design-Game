@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ensureEmailInbox } from "@/game/email/messages";
 import type { GameState, SaveFile } from "@/game/types";
 
 export const saveFileSchema = z.object({
@@ -24,5 +25,7 @@ export function createSaveFile(slotId: string, gameState: GameState): SaveFile {
 }
 
 export function parseSaveFile(value: string): SaveFile {
-  return saveFileSchema.parse(JSON.parse(value));
+  const saveFile = saveFileSchema.parse(JSON.parse(value));
+  ensureEmailInbox(saveFile.gameState);
+  return saveFile;
 }

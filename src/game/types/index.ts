@@ -40,6 +40,18 @@ export type OrderStatus = "active" | "delivering" | "completed" | "cancelled";
 
 export type EventType = "fixed-global" | "conditional-historical" | "emergent";
 
+export type GameEmailCategory =
+  | "executive"
+  | "research"
+  | "development"
+  | "airline"
+  | "operations"
+  | "market"
+  | "competitor"
+  | "finance";
+
+export type GameEmailPriority = "low" | "normal" | "high" | "urgent";
+
 export type TechnologyBranch =
   | "propulsion"
   | "aerodynamics"
@@ -421,6 +433,21 @@ export interface MonthlyTurnReport {
   warnings: string[];
 }
 
+export interface GameEmail {
+  id: string;
+  turn: number;
+  date: GameDate;
+  from: string;
+  to: string;
+  category: GameEmailCategory;
+  priority: GameEmailPriority;
+  subject: string;
+  preview: string;
+  body: string[];
+  read: boolean;
+  relatedEntityId?: string;
+}
+
 export interface Manufacturer {
   id: string;
   name: string;
@@ -469,6 +496,7 @@ export interface GameState {
   eventHistory: HistoricalEvent[];
   randomEventHistory: RandomEvent[];
   monthlyHistory: MonthlyTurnReport[];
+  emails: GameEmail[];
 }
 
 export interface SaveFile {
