@@ -1,3 +1,4 @@
+import { getAircraftNameSelection } from "@/data/identities";
 import { createDefaultDesignInput } from "@/game/aircraft/design";
 import { launchPlayerAircraftProgram, startPlayerResearch } from "@/game/simulation/actions";
 import { createNewGame } from "@/game/simulation/createGame";
@@ -95,7 +96,13 @@ function createEmptyAggregate(): Aggregate {
 
 function bootstrapPlayer(state: GameState): GameState {
   let next = startPlayerResearch(state, "high-bypass-turbofans", 180, 7_000_000);
-  next = launchPlayerAircraftProgram(next, createDefaultDesignInput("regional-jet", "Pioneer RJ-70"));
+  next = launchPlayerAircraftProgram(
+    next,
+    createDefaultDesignInput(
+      "narrow-body",
+      getAircraftNameSelection(next.playerCompanyId, "narrow-body", next.date.year, next.contentSettings.namingMode).displayName
+    )
+  );
   return next;
 }
 

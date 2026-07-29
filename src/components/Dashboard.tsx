@@ -26,7 +26,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
+import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
 import { FACTORY_COUNTRIES } from "@/data/factoryCountries";
+import { getAircraftNameSelection, getDefaultPlayerCompanyName } from "@/data/identities";
 import { RESEARCH_ERAS, TECHNOLOGY_BRANCHES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
 import { getGameEmails } from "@/game/email/messages";
@@ -117,12 +119,18 @@ const EMAIL_FILTERS: { id: GameEmailCategory | "all"; label: string }[] = [
   { id: "finance", label: "Finance" }
 ];
 
+const DEFAULT_DESIGN_CATEGORY: AircraftCategory = "narrow-body";
+
 export function Dashboard() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
   const [designInput, setDesignInput] = useState<AircraftDesignInput>(() =>
-    createDefaultDesignInputForUnlocked("regional-jet", "Pioneer RJ-70", ["improved-aluminum-alloys"])
+    createDefaultDesignInputForUnlocked(
+      DEFAULT_DESIGN_CATEGORY,
+      getDefaultPlayerAircraftName(DEFAULT_DESIGN_CATEGORY, 1970, GAME_CONTENT_SETTINGS.namingMode),
+      ["improved-aluminum-alloys"]
+    )
   );
   const [statusMessage, setStatusMessage] = useState("Ready");
 
@@ -208,10 +216,17 @@ export function Dashboard() {
   }
 
   function newCampaign() {
-    const companyName = window.prompt("Company name", "Pioneer Commercial Aircraft")?.trim();
-    const next = createNewGame({ companyName: companyName || "Pioneer Commercial Aircraft" });
+    const defaultCompanyName = getDefaultPlayerCompanyName(GAME_CONTENT_SETTINGS.namingMode);
+    const companyName = window.prompt("Company name", defaultCompanyName)?.trim();
+    const next = createNewGame({ companyName: companyName || defaultCompanyName });
     setGameState(next);
-    setDesignInput(createDefaultDesignInputForUnlocked("regional-jet", "Pioneer RJ-70", next.manufacturers[next.playerCompanyId]!.unlockedTechnologyIds));
+    setDesignInput(
+      createDefaultDesignInputForUnlocked(
+        DEFAULT_DESIGN_CATEGORY,
+        getDefaultPlayerAircraftName(DEFAULT_DESIGN_CATEGORY, next.date.year, next.contentSettings.namingMode),
+        next.manufacturers[next.playerCompanyId]!.unlockedTechnologyIds
+      )
+    );
     setStatusMessage("New campaign started.");
   }
 
@@ -1823,6 +1838,10 @@ function createDefaultDesignInputForUnlocked(
     },
     unlockedTechnologyIds
   );
+}
+
+function getDefaultPlayerAircraftName(category: AircraftCategory, year: number, mode: GameState["contentSettings"]["namingMode"]): string {
+  return getAircraftNameSelection("player", category, year, mode).displayName;
 }
 
 function labelRole(role: string): string {

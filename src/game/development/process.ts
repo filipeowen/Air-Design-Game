@@ -104,6 +104,7 @@ function createModelFromProgram(
   return {
     id: `model-${program.id}`,
     manufacturerId: manufacturer.id,
+    identityId: design.identityId,
     designId: design.id,
     programId: program.id,
     name: design.input.name,

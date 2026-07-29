@@ -14,6 +14,8 @@ interface EmailDraft {
   subject: string;
   preview: string;
   body: string[];
+  fromEntityId?: string;
+  toEntityId?: string;
   relatedEntityId?: string;
   read?: boolean;
 }
@@ -27,6 +29,7 @@ export function createOpeningEmails(state: GameState): GameEmail[] {
       date: state.date,
       from: "Board Office",
       to,
+      toEntityId: player?.id,
       category: "executive",
       priority: "high",
       subject: "Board memorandum: January 1970 operating mandate",
@@ -42,6 +45,7 @@ export function createOpeningEmails(state: GameState): GameEmail[] {
       date: state.date,
       from: "Research Directorate",
       to,
+      toEntityId: player?.id,
       category: "research",
       priority: "normal",
       subject: "R&D briefing: technology access and research slots",
@@ -57,6 +61,7 @@ export function createOpeningEmails(state: GameState): GameEmail[] {
       date: state.date,
       from: "Commercial Desk",
       to,
+      toEntityId: player?.id,
       category: "airline",
       priority: "normal",
       subject: "Airline relations desk opened",
@@ -94,6 +99,8 @@ export function appendGameEmail(state: GameState, draft: Omit<EmailDraft, "turn"
     subject: draft.subject,
     preview: draft.preview,
     body: draft.body,
+    fromEntityId: draft.fromEntityId,
+    toEntityId: draft.toEntityId ?? player?.id,
     relatedEntityId: draft.relatedEntityId,
     read: draft.read
   });
@@ -126,6 +133,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
     date: report.date,
     from: "Executive Office",
     to,
+    toEntityId: player.id,
     category: "executive",
     priority: report.warnings.length > 0 ? "high" : "normal",
     subject: `Monthly operating brief: ${dateLabel}`,
@@ -146,6 +154,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: "Research Directorate",
       to,
+      toEntityId: player.id,
       category: "research",
       priority: "high",
       subject: `Research complete: ${technologyName}`,
@@ -164,6 +173,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: "Program Management Office",
       to,
+      toEntityId: player.id,
       category: "development",
       priority: message.includes("issue") ? "high" : "normal",
       subject: message.includes("entered service") ? "Aircraft certified for service" : "Aircraft program update",
@@ -182,6 +192,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: "Industrial Operations",
       to,
+      toEntityId: player.id,
       category: "operations",
       priority: "normal",
       subject: "Factory construction complete",
@@ -202,6 +213,8 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: airline?.name ?? "Airline Purchasing",
       to,
+      fromEntityId: airline?.id,
+      toEntityId: player.id,
       category: "airline",
       priority: "high",
       subject: `Purchase agreement: ${model?.name ?? "Aircraft order"}`,
@@ -221,6 +234,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: "Delivery Center",
       to,
+      toEntityId: player.id,
       category: "airline",
       priority: "normal",
       subject: "Aircraft delivery confirmation",
@@ -239,6 +253,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: "Industry News Desk",
       to,
+      toEntityId: player.id,
       category: "market",
       priority: event.severity >= 65 ? "high" : "normal",
       subject: event.title,
@@ -254,6 +269,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: "Market Intelligence",
       to,
+      toEntityId: player.id,
       category: "competitor",
       priority: "normal",
       subject: "Competitor activity brief",
@@ -268,6 +284,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       date: report.date,
       from: "Finance and Risk Office",
       to,
+      toEntityId: player.id,
       category: "finance",
       priority: "urgent",
       subject: "Risk alert",
@@ -312,6 +329,7 @@ function createLegacyReportEmails(state: GameState): GameEmail[] {
         date: report.date,
         from: messageIndex === 0 ? "Executive Office" : "Archive Import",
         to: player.name,
+        toEntityId: player.id,
         category: messageIndex === 0 ? "executive" : "operations",
         priority: "normal",
         subject: messageIndex === 0 ? `Archived monthly brief: ${formatGameDate(report.date)}` : "Archived campaign update",
@@ -336,6 +354,8 @@ function buildEmail(index: number, draft: EmailDraft): GameEmail {
     preview: draft.preview,
     body: draft.body,
     read: draft.read ?? false,
+    fromEntityId: draft.fromEntityId,
+    toEntityId: draft.toEntityId,
     relatedEntityId: draft.relatedEntityId
   };
 }

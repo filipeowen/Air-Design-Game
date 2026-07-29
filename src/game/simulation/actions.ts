@@ -1,5 +1,6 @@
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
 import { getFactoryRegionForCountry } from "@/data/factoryCountries";
+import { getAircraftIdentityByDisplayName } from "@/data/identities";
 import { calculateAircraftDesign } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
 import { appendGameEmail, ensureEmailInbox } from "@/game/email/messages";
@@ -17,10 +18,13 @@ export function launchPlayerAircraftProgram(state: GameState, input: AircraftDes
   }
 
   const sanitizedInput = sanitizeAircraftDesignInput(input, player.unlockedTechnologyIds);
+  const aircraftIdentity = getAircraftIdentityByDisplayName(sanitizedInput.name, next.contentSettings.namingMode);
   const calculated = calculateAircraftDesign(sanitizedInput);
   const design = {
     id: `design-player-${next.turn}-${sanitizedInput.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     manufacturerId: player.id,
+    identityId:
+      aircraftIdentity?.manufacturerId === player.id && aircraftIdentity.category === sanitizedInput.category ? aircraftIdentity.id : undefined,
     createdTurn: next.turn,
     ...calculated
   };

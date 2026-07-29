@@ -1,5 +1,7 @@
 import { createEmployeeGroup } from "@/game/employees/defaults";
-import type { AircraftCategory, Factory, Manufacturer, ManufacturerStrategy, Region } from "@/game/types";
+import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
+import { getManufacturerIdentity } from "@/data/identities";
+import type { AircraftCategory, Factory, Manufacturer, ManufacturerStrategy, NamingMode, Region } from "@/game/types";
 
 function strategy(overrides: Partial<ManufacturerStrategy>): ManufacturerStrategy {
   return {
@@ -73,14 +75,16 @@ function defaultFactoryCountry(location: Region): string {
 
 export function createBaseManufacturer(
   id: string,
-  name: string,
   cash: number,
   preferredRegions: Region[],
-  strategyOverrides: Partial<ManufacturerStrategy>
+  strategyOverrides: Partial<ManufacturerStrategy>,
+  mode: NamingMode = GAME_CONTENT_SETTINGS.namingMode
 ): Manufacturer {
+  const identity = getManufacturerIdentity(id, mode);
   return {
     id,
-    name,
+    identityId: identity.id,
+    name: identity.displayName,
     isPlayer: false,
     cash,
     debt: cash * 0.25,
@@ -117,50 +121,50 @@ export function createBaseManufacturer(
   };
 }
 
-export function createStartingCompetitors(): Manufacturer[] {
+export function createStartingCompetitors(mode: NamingMode = GAME_CONTENT_SETTINGS.namingMode): Manufacturer[] {
   return [
-    createBaseManufacturer("pacific-aeroworks", "Pacific Aeroworks", 8_800_000_000, ["north-america"], {
+    createBaseManufacturer("pacific-aeroworks", 8_800_000_000, ["north-america"], {
       innovationPreference: 62,
       riskTolerance: 55,
       priceAggressiveness: 46,
       researchIntensity: 58,
       preferredSegments: ["narrow-body", "wide-body"]
-    }),
-    createBaseManufacturer("dominion-aircraft", "Dominion Aircraft", 5_200_000_000, ["north-america"], {
+    }, mode),
+    createBaseManufacturer("dominion-aircraft", 5_200_000_000, ["north-america"], {
       riskTolerance: 48,
       customerRelationshipFocus: 67,
       productionConservatism: 58,
       preferredSegments: ["regional-jet", "narrow-body"]
-    }),
-    createBaseManufacturer("meridian-aviation", "Meridian Aviation", 3_900_000_000, ["north-america"], {
+    }, mode),
+    createBaseManufacturer("meridian-aviation", 3_900_000_000, ["europe"], {
       innovationPreference: 70,
       riskTolerance: 43,
       governmentContractPreference: 70,
       preferredSegments: ["wide-body"]
-    }),
-    createBaseManufacturer("euro-aerospace-consortium", "European Aerospace Consortium", 4_800_000_000, ["europe"], {
+    }, mode),
+    createBaseManufacturer("euro-aerospace-consortium", 4_800_000_000, ["europe"], {
       innovationPreference: 64,
       debtTolerance: 62,
       customerRelationshipFocus: 62,
       preferredSegments: ["narrow-body", "wide-body"],
       preferredRegions: ["europe", "middle-east"]
-    }),
-    createBaseManufacturer("noord-aviation", "Noord Aviation", 1_600_000_000, ["europe"], {
+    }, mode),
+    createBaseManufacturer("noord-aviation", 1_600_000_000, ["europe"], {
       priceAggressiveness: 58,
       productionConservatism: 66,
       preferredSegments: ["regional-jet"]
-    }),
-    createBaseManufacturer("atlantico-aeronautics", "Atlantico Aeronautics", 900_000_000, ["latin-america"], {
+    }, mode),
+    createBaseManufacturer("atlantico-aeronautics", 900_000_000, ["latin-america"], {
       innovationPreference: 48,
       priceAggressiveness: 66,
       riskTolerance: 45,
       preferredSegments: ["regional-jet"]
-    }),
-    createBaseManufacturer("sunrise-heavy", "Sunrise Heavy Industries", 2_400_000_000, ["asia-pacific"], {
+    }, mode),
+    createBaseManufacturer("sunrise-heavy", 2_400_000_000, ["soviet-market"], {
       innovationPreference: 60,
       governmentContractPreference: 64,
       longTermPlanning: 72,
       preferredSegments: ["regional-jet", "narrow-body"]
-    })
+    }, mode)
   ];
 }

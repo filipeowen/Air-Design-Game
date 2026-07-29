@@ -13,6 +13,8 @@ export type Region =
 
 export type AircraftCategory = "regional-jet" | "narrow-body" | "wide-body";
 
+export type NamingMode = "real_world" | "fictional";
+
 export type EmployeeRole = "scientists" | "engineers" | "factoryWorkers" | "salesStaff";
 
 export type DevelopmentStageId =
@@ -98,10 +100,46 @@ export interface GameDate {
   month: number;
 }
 
+export interface GameContentSettings {
+  namingMode: NamingMode;
+}
+
 export interface GameSettings {
   difficulty: "standard" | "forgiving" | "hard";
   autosave: boolean;
   playerCompanyName: string;
+}
+
+export interface ManufacturerIdentity {
+  id: string;
+  displayName: string;
+  shortName: string;
+  historicalInspiration?: string;
+  country: string;
+  logoAsset?: string;
+  isRealWorldName: boolean;
+}
+
+export interface AirlineIdentity {
+  id: string;
+  displayName: string;
+  shortName: string;
+  country: string;
+  region: Region;
+  historicalInspiration?: string;
+  isRealWorldName: boolean;
+}
+
+export interface AircraftIdentity {
+  id: string;
+  displayName: string;
+  shortName: string;
+  manufacturerId: string;
+  category: AircraftCategory;
+  startYear: number;
+  endYear?: number;
+  historicalInspiration?: string;
+  isRealWorldName: boolean;
 }
 
 export interface EmployeeGroup {
@@ -190,6 +228,7 @@ export interface AircraftDesignMetrics {
 export interface AircraftDesign {
   id: string;
   manufacturerId: string;
+  identityId?: string;
   createdTurn: number;
   input: AircraftDesignInput;
   metrics: AircraftDesignMetrics;
@@ -220,6 +259,7 @@ export interface AircraftProgram {
 export interface AircraftModel {
   id: string;
   manufacturerId: string;
+  identityId?: string;
   designId: string;
   programId: string;
   name: string;
@@ -306,7 +346,9 @@ export interface ProductionLine {
 
 export interface Airline {
   id: string;
+  identityId?: string;
   name: string;
+  country?: string;
   region: Region;
   fleetSize: number;
   financialStrength: number;
@@ -445,11 +487,14 @@ export interface GameEmail {
   preview: string;
   body: string[];
   read: boolean;
+  fromEntityId?: string;
+  toEntityId?: string;
   relatedEntityId?: string;
 }
 
 export interface Manufacturer {
   id: string;
+  identityId?: string;
   name: string;
   isPlayer: boolean;
   cash: number;
@@ -482,6 +527,7 @@ export interface PlayerCompany extends Manufacturer {
 }
 
 export interface GameState {
+  contentSettings: GameContentSettings;
   settings: GameSettings;
   date: GameDate;
   turn: number;
@@ -500,7 +546,7 @@ export interface GameState {
 }
 
 export interface SaveFile {
-  version: 1;
+  version: 1 | 2;
   savedAt: string;
   slotId: string;
   gameState: GameState;

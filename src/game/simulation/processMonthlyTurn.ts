@@ -1,3 +1,4 @@
+import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
 import { finalizeFinancialDraft, createFinancialDraft, calculatePayroll } from "@/game/finance/calculations";
 import { processCompetitorDecisions } from "@/game/competitors/ai";
 import { processDevelopment } from "@/game/development/process";
@@ -6,12 +7,13 @@ import { processFactoryConstruction, processFactoryExpenses, processProduction }
 import { processMarketAndEvents } from "@/game/market/events";
 import { processAirlineOrders, processProgressPayments } from "@/game/orders/airlineDecisions";
 import { processResearch } from "@/game/research/process";
-import type { AircraftCategory, GameState, Manufacturer, MonthlyTurnReport, TurnResult } from "@/game/types";
+import type { AircraftCategory, GameContentSettings, GameState, Manufacturer, MonthlyTurnReport, TurnResult } from "@/game/types";
 import { advanceMonth, formatGameDate } from "@/game/utils/date";
 import { createRandomSource } from "@/game/utils/prng";
 
 export function processMonthlyTurn(gameState: GameState): TurnResult {
   const next = structuredClone(gameState);
+  (next as GameState & { contentSettings?: GameContentSettings }).contentSettings ??= { ...GAME_CONTENT_SETTINGS };
   const rng = createRandomSource(next.randomState);
   const turn = next.turn + 1;
   const date = advanceMonth(next.date);
@@ -74,7 +76,8 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
     next.marketSegments,
     rng,
     turn,
-    date.year
+    date.year,
+    next.contentSettings
   );
 
   const marketResult = processMarketAndEvents(next.marketSegments, rng, turn, date.year);

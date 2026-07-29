@@ -1,11 +1,13 @@
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
+import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
+import { getAircraftNameSelection } from "@/data/identities";
 import { TECHNOLOGIES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
 import { createProductionLine, getFactoryStatus } from "@/game/factories/process";
 import { canResearchTechnology, createResearchProject } from "@/game/research/process";
 import { getResearchSlotCount } from "@/game/research/rules";
-import type { AircraftCategory, Manufacturer, MarketSegment, Technology } from "@/game/types";
+import type { AircraftCategory, GameContentSettings, Manufacturer, MarketSegment, Technology } from "@/game/types";
 import type { RandomSource } from "@/game/utils/prng";
 
 export interface CompetitorDecisionResult {
@@ -18,7 +20,8 @@ export function processCompetitorDecisions(
   markets: Record<AircraftCategory, MarketSegment>,
   rng: RandomSource,
   turn: number,
-  year: number
+  year: number,
+  contentSettings: GameContentSettings = GAME_CONTENT_SETTINGS
 ): CompetitorDecisionResult {
   const actions: string[] = [];
 
@@ -29,7 +32,7 @@ export function processCompetitorDecisions(
 
     hireIfGrowing(manufacturer, rng, actions);
     chooseResearch(manufacturer, technologies, rng, year, actions);
-    launchProgramIfUseful(manufacturer, markets, rng, turn, actions);
+    launchProgramIfUseful(manufacturer, markets, rng, turn, year, contentSettings, actions);
     openProductionLineIfNeeded(manufacturer, actions);
   }
 
@@ -96,6 +99,8 @@ function launchProgramIfUseful(
   markets: Record<AircraftCategory, MarketSegment>,
   rng: RandomSource,
   turn: number,
+  year: number,
+  contentSettings: GameContentSettings,
   actions: string[]
 ): void {
   const activePrograms = manufacturer.aircraftPrograms.filter((program) => program.status === "active");
@@ -123,7 +128,14 @@ function launchProgramIfUseful(
     return;
   }
 
-  const input = createDefaultDesignInput(category, aiModelName(manufacturer.id, category, turn));
+  const nameSelection = getAircraftNameSelection(
+    manufacturer.id,
+    category,
+    year,
+    contentSettings.namingMode,
+    manufacturer.aircraftModels.map((model) => model.name)
+  );
+  const input = createDefaultDesignInput(category, nameSelection.displayName);
   input.passengerCapacity = Math.round(input.passengerCapacity * rng.nextBetween(0.9, 1.12));
   input.rangeNm = Math.round(input.rangeNm * rng.nextBetween(0.92, 1.16));
   input.commonality = existingFreshModel ? 58 : 22;
@@ -133,6 +145,7 @@ function launchProgramIfUseful(
   const design = {
     id: `design-${manufacturer.id}-${turn}`,
     manufacturerId: manufacturer.id,
+    identityId: nameSelection.identityId,
     createdTurn: turn,
     ...calculated
   };
@@ -160,13 +173,4 @@ function openProductionLineIfNeeded(manufacturer: Manufacturer, actions: string[
     factory.productionLines.push(createProductionLine(model, rate));
     actions.push(`${manufacturer.name} opened a production line for ${model.name}.`);
   }
-}
-
-function aiModelName(manufacturerId: string, category: AircraftCategory, turn: number): string {
-  const family = manufacturerId
-    .split("-")
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-  const categoryNumber = category === "regional-jet" ? 70 : category === "narrow-body" ? 160 : 300;
-  return `${family}-${categoryNumber + (turn % 40)}`;
 }

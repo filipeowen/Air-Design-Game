@@ -1,4 +1,6 @@
-import { STARTING_AIRLINES } from "@/data/airlines";
+import { createStartingAirlines } from "@/data/airlines";
+import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
+import { getAircraftNameSelection, getDefaultPlayerCompanyName, getManufacturerIdentity } from "@/data/identities";
 import { createStartingCompetitors } from "@/data/manufacturers";
 import { STARTING_MARKETS } from "@/data/market";
 import { TECHNOLOGIES } from "@/data/technologies";
@@ -14,33 +16,42 @@ import type {
   Airline,
   AirlineRelationship,
   Factory,
+  GameContentSettings,
   GameSettings,
   GameState,
   Manufacturer,
+  NamingMode,
   Technology
 } from "@/game/types";
 import { createRandomSource, normalizeSeed } from "@/game/utils/prng";
 
 export interface NewGameOptions {
   companyName?: string;
+  contentSettings?: Partial<GameContentSettings>;
   seed?: number;
 }
 
 export function createNewGame(options: NewGameOptions = {}): GameState {
+  const contentSettings: GameContentSettings = {
+    ...GAME_CONTENT_SETTINGS,
+    ...options.contentSettings
+  };
   const seed = normalizeSeed(options.seed ?? Math.floor(Date.now() % 2_147_483_647));
   const rng = createRandomSource(seed);
   const technologies = Object.fromEntries(TECHNOLOGIES.map((technology) => [technology.id, technology])) as Record<string, Technology>;
-  const airlines = Object.fromEntries(STARTING_AIRLINES.map((airline) => [airline.id, structuredClone(airline)])) as Record<string, Airline>;
-  const player = createPlayerManufacturer(options.companyName ?? "Pioneer Commercial Aircraft");
-  const competitors = createStartingCompetitors();
+  const airlines = Object.fromEntries(
+    createStartingAirlines(contentSettings.namingMode).map((airline) => [airline.id, structuredClone(airline)])
+  ) as Record<string, Airline>;
+  const player = createPlayerManufacturer(options.companyName ?? getDefaultPlayerCompanyName(contentSettings.namingMode), contentSettings.namingMode);
+  const competitors = createStartingCompetitors(contentSettings.namingMode);
 
   for (const competitor of competitors) {
-    addLegacyModel(competitor, "narrow-body", 0);
+    addLegacyModel(competitor, "narrow-body", 0, 1970, contentSettings.namingMode);
     if (competitor.strategy.preferredSegments.includes("regional-jet")) {
-      addLegacyModel(competitor, "regional-jet", 0);
+      addLegacyModel(competitor, "regional-jet", 0, 1970, contentSettings.namingMode);
     }
     if (competitor.strategy.preferredSegments.includes("wide-body")) {
-      addLegacyModel(competitor, "wide-body", 0);
+      addLegacyModel(competitor, "wide-body", 0, 1970, contentSettings.namingMode);
     }
   }
 
@@ -48,6 +59,7 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
   seedRelationships(manufacturers, airlines, rng);
 
   const state: GameState = {
+    contentSettings,
     settings: {
       difficulty: "standard",
       autosave: true,
@@ -72,9 +84,11 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
   return state;
 }
 
-function createPlayerManufacturer(companyName: string): Manufacturer {
+function createPlayerManufacturer(companyName: string, mode: NamingMode): Manufacturer {
+  const identity = getManufacturerIdentity("player", mode);
   return {
     id: "player",
+    identityId: identity.id,
     name: companyName,
     isPlayer: true,
     cash: 2_800_000_000,
@@ -145,8 +159,15 @@ function createPlayerFactory(): Factory {
   };
 }
 
-function addLegacyModel(manufacturer: Manufacturer, category: AircraftCategory, turn: number): void {
-  const input = createDefaultDesignInput(category, legacyName(manufacturer.id, category));
+function addLegacyModel(manufacturer: Manufacturer, category: AircraftCategory, turn: number, year: number, mode: NamingMode): void {
+  const nameSelection = getAircraftNameSelection(
+    manufacturer.id,
+    category,
+    year,
+    mode,
+    manufacturer.aircraftModels.map((model) => model.name)
+  );
+  const input = createDefaultDesignInput(category, nameSelection.displayName);
   input.structuralMaterial = "classic-aluminum";
   input.avionicsPackage = "analog";
   input.engineType = "high-bypass-turbofan";
@@ -160,6 +181,7 @@ function addLegacyModel(manufacturer: Manufacturer, category: AircraftCategory, 
   const design: AircraftDesign = {
     id: `design-${manufacturer.id}-${category}-legacy`,
     manufacturerId: manufacturer.id,
+    identityId: nameSelection.identityId,
     createdTurn: turn,
     ...calculated
   };
@@ -172,6 +194,7 @@ function addLegacyModel(manufacturer: Manufacturer, category: AircraftCategory, 
   const model: AircraftModel = {
     id: `model-${manufacturer.id}-${category}-legacy`,
     manufacturerId: manufacturer.id,
+    identityId: nameSelection.identityId,
     designId: design.id,
     programId: program.id,
     name: input.name,
@@ -219,21 +242,6 @@ function seedRelationships(
       airline.relationshipScore[manufacturer.id] = score;
     }
   }
-}
-
-function legacyName(manufacturerId: string, category: AircraftCategory): string {
-  const prefix = manufacturerId
-    .split("-")
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-
-  if (category === "regional-jet") {
-    return `${prefix}-72 Commuter`;
-  }
-  if (category === "narrow-body") {
-    return `${prefix}-160 Meridian`;
-  }
-  return `${prefix}-310 Intercontinental`;
 }
 
 function rnglessAge(category: AircraftCategory): number {
