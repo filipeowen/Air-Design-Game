@@ -30,6 +30,18 @@ describe("content naming mode", () => {
     expect(competitorModelNames).not.toContain("Airbus A320");
   });
 
+  it("can start as a selected real manufacturer without duplicating that competitor", () => {
+    const state = createNewGame({ seed: 1971, playerManufacturerId: "meridian-aviation" });
+    const manufacturerNames = Object.values(state.manufacturers).map((manufacturer) => manufacturer.name);
+
+    expect(state.manufacturers[state.playerCompanyId]?.name).toBe("Airbus");
+    expect(state.manufacturers[state.playerCompanyId]?.identityId).toBe("meridian-aviation");
+    expect(state.settings.playerManufacturerIdentityId).toBe("meridian-aviation");
+    expect(state.manufacturers["meridian-aviation"]).toBeUndefined();
+    expect(manufacturerNames.filter((name) => name === "Airbus")).toHaveLength(1);
+    expect(manufacturerNames).toContain("Boeing");
+  });
+
   it("keeps historical aircraft names behind their availability year", () => {
     expect(getAircraftNameSelection("meridian-aviation", "narrow-body", 1970, "real_world").displayName).not.toBe("Airbus A320");
     expect(getAircraftNameSelection("meridian-aviation", "wide-body", 1970, "real_world").displayName).not.toBe("Airbus A300");

@@ -31,7 +31,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
 import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
 import { FACTORY_COUNTRIES } from "@/data/factoryCountries";
-import { getAircraftNameSelection, getDefaultPlayerCompanyName } from "@/data/identities";
+import { getAircraftNameSelection, getManufacturerIdentities } from "@/data/identities";
 import { RESEARCH_ERAS, TECHNOLOGY_BRANCHES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
 import { getGameEmails } from "@/game/email/messages";
@@ -78,6 +78,7 @@ import type {
   GameEmailCategory,
   GameEmailPriority,
   GameState,
+  ManufacturerIdentity,
   MonthlyFinancialReport,
   Technology,
   TechnologyBranch
@@ -142,6 +143,8 @@ const DEFAULT_DESIGN_CATEGORY: AircraftCategory = "narrow-body";
 
 export function Dashboard() {
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const [autosaveState, setAutosaveState] = useState<GameState | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("email");
   const [focusedTarget, setFocusedTarget] = useState<GameDeepLinkTarget>({ section: "email" });
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
@@ -168,13 +171,23 @@ export function Dashboard() {
 
   useEffect(() => {
     let mounted = true;
-    loadGameFromSlot("autosave").then((loaded) => {
-      if (!mounted) {
-        return;
-      }
-      setGameState(loaded ?? createNewGame());
-      setSaveSlots(listLocalSaves());
-    });
+    loadGameFromSlot("autosave")
+      .then((loaded) => {
+        if (!mounted) {
+          return;
+        }
+        setAutosaveState(loaded);
+        setSaveSlots(listLocalSaves());
+        setBootstrapped(true);
+      })
+      .catch(() => {
+        if (!mounted) {
+          return;
+        }
+        setAutosaveState(null);
+        setSaveSlots(listLocalSaves());
+        setBootstrapped(true);
+      });
     return () => {
       mounted = false;
     };
@@ -204,6 +217,27 @@ export function Dashboard() {
   const emails = gameState ? getGameEmails(gameState) : [];
   const unreadEmailCount = emails.filter((email) => !email.read).length;
   const actionRequiredEmailCount = emails.filter((email) => email.requiresAction && email.status === "open" && !email.archived).length;
+
+  if (!bootstrapped) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-700">Loading campaign...</div>;
+  }
+
+  if (!gameState) {
+    return (
+      <StartScreen
+        manufacturers={getManufacturerIdentities(GAME_CONTENT_SETTINGS.namingMode)}
+        autosaveState={autosaveState}
+        saveSlots={saveSlots}
+        continueCampaign={() => {
+          if (autosaveState) {
+            activateCampaign(autosaveState, "Campaign loaded.");
+          }
+        }}
+        loadSlot={loadSlot}
+        startCampaign={startCampaign}
+      />
+    );
+  }
 
   if (!gameState || !player) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-700">Loading campaign...</div>;
@@ -248,8 +282,7 @@ export function Dashboard() {
   async function loadSlot(slotId: string) {
     const loaded = await loadGameFromSlot(slotId);
     if (loaded) {
-      setGameState(loaded);
-      setStatusMessage("Campaign loaded.");
+      activateCampaign(loaded, "Campaign loaded.");
     }
   }
 
@@ -260,18 +293,24 @@ export function Dashboard() {
   }
 
   function newCampaign() {
-    const defaultCompanyName = getDefaultPlayerCompanyName(GAME_CONTENT_SETTINGS.namingMode);
-    const companyName = window.prompt("Company name", defaultCompanyName)?.trim();
-    const next = createNewGame({ companyName: companyName || defaultCompanyName });
+    setGameState(null);
+    setStatusMessage("Choose a manufacturer.");
+  }
+
+  function startCampaign(manufacturerIdentityId: string) {
+    const identity = getManufacturerIdentities(GAME_CONTENT_SETTINGS.namingMode).find((candidate) => candidate.id === manufacturerIdentityId);
+    const next = createNewGame({
+      companyName: identity?.displayName,
+      playerManufacturerId: manufacturerIdentityId
+    });
+    activateCampaign(next, `${next.manufacturers[next.playerCompanyId]?.name ?? "New"} campaign started.`);
+  }
+
+  function activateCampaign(next: GameState, message: string) {
     setGameState(next);
-    setDesignInput(
-      createDefaultDesignInputForUnlocked(
-        DEFAULT_DESIGN_CATEGORY,
-        getDefaultPlayerAircraftName(DEFAULT_DESIGN_CATEGORY, next.date.year, next.contentSettings.namingMode),
-        next.manufacturers[next.playerCompanyId]!.unlockedTechnologyIds
-      )
-    );
-    setStatusMessage("New campaign started.");
+    setDesignInput(createOpeningDesignInput(next));
+    navigate({ section: "email" });
+    setStatusMessage(message);
   }
 
   function mutateGame(mutator: (state: GameState) => GameState, message: string) {
@@ -282,7 +321,7 @@ export function Dashboard() {
   return (
     <main className="min-h-screen bg-[#f4f5f1] text-[#17211c]">
       <header className="border-b border-[#d8ddd2] bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto grid max-w-7xl gap-4 px-4 py-4 xl:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.55fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <AircraftPlanform />
             <div className="min-w-0">
@@ -304,7 +343,7 @@ export function Dashboard() {
             activeResearch={player.researchProjects.filter((project) => project.status === "active").length}
             activePrograms={player.aircraftPrograms.filter((program) => program.status === "active").length}
           />
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <SaveMenu saveSlots={saveSlots} loadSlot={loadSlot} deleteSlot={deleteSlot} manualSave={manualSave} newCampaign={newCampaign} />
             <IconButton title="Settings" onClick={() => setStatusMessage("Settings will move here in a later pass.")} icon={Settings} label="Settings" />
             <IconButton title="End month" onClick={endTurn} icon={Play} label="End Turn" primary />
@@ -409,14 +448,131 @@ function HeaderStats({
   ];
 
   return (
-    <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-2">
       {stats.map((stat) => (
-        <div key={stat.label} className="rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
+        <div key={stat.label} className="min-w-0 rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
           <div className="text-[11px] font-semibold uppercase text-neutral-500">{stat.label}</div>
-          <div className="mt-0.5 truncate text-sm font-semibold">{stat.value}</div>
+          <div className="mt-0.5 break-words text-sm font-semibold leading-5">{stat.value}</div>
         </div>
       ))}
     </div>
+  );
+}
+
+function StartScreen({
+  manufacturers,
+  autosaveState,
+  saveSlots,
+  continueCampaign,
+  loadSlot,
+  startCampaign
+}: {
+  manufacturers: ManufacturerIdentity[];
+  autosaveState: GameState | null;
+  saveSlots: SaveSlotSummary[];
+  continueCampaign: () => void;
+  loadSlot: (slotId: string) => void;
+  startCampaign: (manufacturerIdentityId: string) => void;
+}) {
+  const visibleSlots = saveSlots.slice(0, 5);
+
+  return (
+    <main className="min-h-screen bg-[#f4f5f1] text-[#17211c]">
+      <section className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#d8ddd2] pb-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <AircraftPlanform />
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-normal">Aircraft Producer</h1>
+              <p className="mt-1 text-sm text-neutral-600">January 1970</p>
+            </div>
+          </div>
+          {autosaveState ? <IconButton title="Continue autosave" icon={Play} label="Continue" onClick={continueCampaign} primary /> : null}
+        </div>
+
+        <div className="grid flex-1 gap-5 lg:grid-cols-[280px_1fr]">
+          <aside className="space-y-4">
+            <section className="rounded-lg border border-[#d8ddd2] bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold uppercase tracking-normal text-neutral-600">Campaign</h2>
+                <CalendarDays size={17} className="text-[#0f766e]" />
+              </div>
+              {autosaveState ? (
+                <button
+                  onClick={continueCampaign}
+                  className="focus-ring mt-4 w-full rounded-md border border-[#0f766e] bg-[#0f766e] px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-[#115e59]"
+                >
+                  Continue {autosaveState.settings.playerCompanyName}
+                  <span className="mt-1 block text-xs font-medium text-teal-50">{formatGameDate(autosaveState.date)}</span>
+                </button>
+              ) : (
+                <p className="mt-4 text-sm text-neutral-600">No autosave found.</p>
+              )}
+            </section>
+
+            <section className="rounded-lg border border-[#d8ddd2] bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold uppercase tracking-normal text-neutral-600">Saves</h2>
+                <Save size={17} className="text-[#0f766e]" />
+              </div>
+              <div className="mt-3 space-y-2">
+                {visibleSlots.length === 0 ? (
+                  <p className="text-sm text-neutral-600">No manual saves yet.</p>
+                ) : (
+                  visibleSlots.map((slot) => (
+                    <button
+                      key={slot.slotId}
+                      onClick={() => loadSlot(slot.slotId)}
+                      className="focus-ring w-full rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2 text-left transition hover:border-[#0f766e] hover:bg-[#eef8f5]"
+                    >
+                      <span className="block truncate text-sm font-semibold">{slot.companyName}</span>
+                      <span className="mt-1 block truncate text-xs text-neutral-600">{slot.slotId} · {slot.dateLabel}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+          </aside>
+
+          <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">Select Manufacturer</h2>
+                <p className="mt-1 text-sm text-neutral-600">Temporary real-world naming mode</p>
+              </div>
+              <span className="rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-1.5 text-xs font-semibold uppercase text-neutral-600">
+                {manufacturers.length} choices
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {manufacturers.map((manufacturer) => (
+                <button
+                  key={manufacturer.id}
+                  onClick={() => startCampaign(manufacturer.id)}
+                  className="focus-ring group min-h-40 rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-4 text-left transition hover:border-[#0f766e] hover:bg-[#eef8f5]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-[#17211c] text-sm font-semibold text-white">
+                      {manufacturer.shortName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="rounded-md border border-[#d8ddd2] bg-white px-2 py-1 text-xs font-semibold text-neutral-600">
+                      {manufacturer.country}
+                    </span>
+                  </div>
+                  <h3 className="mt-4 text-lg font-semibold">{manufacturer.displayName}</h3>
+                  <p className="mt-1 text-sm text-neutral-600">{manufacturer.shortName}</p>
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#0f766e]">
+                    Start campaign
+                    <Play size={15} className="transition group-hover:translate-x-0.5" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -2569,6 +2725,21 @@ function createDefaultDesignInputForUnlocked(
   );
 }
 
-function getDefaultPlayerAircraftName(category: AircraftCategory, year: number, mode: GameState["contentSettings"]["namingMode"]): string {
-  return getAircraftNameSelection("player", category, year, mode).displayName;
+function createOpeningDesignInput(state: GameState): AircraftDesignInput {
+  const player = state.manufacturers[state.playerCompanyId];
+  const manufacturerIdentityId = player?.identityId ?? state.settings.playerManufacturerIdentityId ?? "player";
+  return createDefaultDesignInputForUnlocked(
+    DEFAULT_DESIGN_CATEGORY,
+    getDefaultPlayerAircraftName(DEFAULT_DESIGN_CATEGORY, state.date.year, state.contentSettings.namingMode, manufacturerIdentityId),
+    player?.unlockedTechnologyIds ?? ["improved-aluminum-alloys"]
+  );
+}
+
+function getDefaultPlayerAircraftName(
+  category: AircraftCategory,
+  year: number,
+  mode: GameState["contentSettings"]["namingMode"],
+  manufacturerIdentityId = "player"
+): string {
+  return getAircraftNameSelection(manufacturerIdentityId, category, year, mode).displayName;
 }

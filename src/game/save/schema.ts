@@ -56,8 +56,12 @@ function ensureSimulationEventHistory(state: GameState): void {
 function ensureIdentityNames(state: GameState, settings: GameContentSettings): void {
   const fictionalPlayerName = getDefaultPlayerCompanyName("fictional");
   for (const manufacturer of Object.values(state.manufacturers)) {
-    const identity = getManufacturerIdentity(manufacturer.id, settings.namingMode);
+    const identityKey = manufacturer.identityId ?? manufacturer.id;
+    const identity = getManufacturerIdentity(identityKey, settings.namingMode);
     manufacturer.identityId ??= identity.id;
+    if (manufacturer.isPlayer) {
+      state.settings.playerManufacturerIdentityId ??= manufacturer.identityId;
+    }
 
     if (!manufacturer.isPlayer || manufacturer.name === fictionalPlayerName || state.settings.playerCompanyName === fictionalPlayerName) {
       manufacturer.name = identity.displayName;
@@ -71,7 +75,7 @@ function ensureIdentityNames(state: GameState, settings: GameContentSettings): v
       const existingIdentity = model.identityId ? getAircraftIdentity(model.identityId, settings.namingMode) : undefined;
       const selection =
         existingIdentity ??
-        getAircraftNameSelection(manufacturer.id, model.category, state.date.year, settings.namingMode, usedNames);
+        getAircraftNameSelection(manufacturer.identityId ?? manufacturer.id, model.category, state.date.year, settings.namingMode, usedNames);
       const identityId = "id" in selection ? selection.id : selection.identityId;
       const displayName = "displayName" in selection ? selection.displayName : model.name;
 

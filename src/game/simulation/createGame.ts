@@ -1,7 +1,7 @@
 import { createStartingAirlines } from "@/data/airlines";
 import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
 import { getAircraftNameSelection, getDefaultPlayerCompanyName, getManufacturerIdentity } from "@/data/identities";
-import { createStartingCompetitors } from "@/data/manufacturers";
+import { createBaseManufacturer, createStartingCompetitors } from "@/data/manufacturers";
 import { STARTING_MARKETS } from "@/data/market";
 import { TECHNOLOGIES } from "@/data/technologies";
 import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
@@ -27,6 +27,7 @@ import { createRandomSource, normalizeSeed } from "@/game/utils/prng";
 
 export interface NewGameOptions {
   companyName?: string;
+  playerManufacturerId?: string;
   contentSettings?: Partial<GameContentSettings>;
   seed?: number;
 }
@@ -42,8 +43,19 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
   const airlines = Object.fromEntries(
     createStartingAirlines(contentSettings.namingMode).map((airline) => [airline.id, structuredClone(airline)])
   ) as Record<string, Airline>;
-  const player = createPlayerManufacturer(options.companyName ?? getDefaultPlayerCompanyName(contentSettings.namingMode), contentSettings.namingMode);
-  const competitors = createStartingCompetitors(contentSettings.namingMode);
+  const playerManufacturerId = options.playerManufacturerId ?? "player";
+  const playerIdentity = getManufacturerIdentity(playerManufacturerId, contentSettings.namingMode);
+  const player = createPlayerManufacturer(
+    options.companyName ?? playerIdentity.displayName ?? getDefaultPlayerCompanyName(contentSettings.namingMode),
+    contentSettings.namingMode,
+    playerManufacturerId
+  );
+  const competitors = createStartingCompetitors(contentSettings.namingMode).filter(
+    (competitor) => competitor.id !== playerManufacturerId
+  );
+  if (playerManufacturerId !== "player") {
+    competitors.unshift(createDefaultPlayerIdentityCompetitor(contentSettings.namingMode));
+  }
 
   for (const competitor of competitors) {
     addLegacyModel(competitor, "narrow-body", 0, 1970, contentSettings.namingMode);
@@ -63,7 +75,8 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
     settings: {
       difficulty: "standard",
       autosave: true,
-      playerCompanyName: player.name
+      playerCompanyName: player.name,
+      playerManufacturerIdentityId: player.identityId
     },
     date: { year: 1970, month: 1 },
     turn: 0,
@@ -85,8 +98,8 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
   return state;
 }
 
-function createPlayerManufacturer(companyName: string, mode: NamingMode): Manufacturer {
-  const identity = getManufacturerIdentity("player", mode);
+function createPlayerManufacturer(companyName: string, mode: NamingMode, manufacturerIdentityId = "player"): Manufacturer {
+  const identity = getManufacturerIdentity(manufacturerIdentityId, mode);
   return {
     id: "player",
     identityId: identity.id,
@@ -140,6 +153,27 @@ function createPlayerManufacturer(companyName: string, mode: NamingMode): Manufa
   };
 }
 
+function createDefaultPlayerIdentityCompetitor(mode: NamingMode): Manufacturer {
+  const identity = getManufacturerIdentity("player", mode);
+  const competitor = createBaseManufacturer(
+    "boeing",
+    10_800_000_000,
+    ["north-america"],
+    {
+      innovationPreference: 60,
+      riskTolerance: 50,
+      priceAggressiveness: 47,
+      researchIntensity: 56,
+      productionConservatism: 57,
+      preferredSegments: ["narrow-body", "wide-body"]
+    },
+    mode
+  );
+  competitor.identityId = identity.id;
+  competitor.name = identity.displayName;
+  return competitor;
+}
+
 function createPlayerFactory(): Factory {
   return {
     id: "player-renton-works",
@@ -161,8 +195,9 @@ function createPlayerFactory(): Factory {
 }
 
 function addLegacyModel(manufacturer: Manufacturer, category: AircraftCategory, turn: number, year: number, mode: NamingMode): void {
+  const identityId = manufacturer.identityId ?? manufacturer.id;
   const nameSelection = getAircraftNameSelection(
-    manufacturer.id,
+    identityId,
     category,
     year,
     mode,

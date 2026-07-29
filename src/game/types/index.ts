@@ -147,6 +147,7 @@ export interface GameSettings {
   difficulty: "standard" | "forgiving" | "hard";
   autosave: boolean;
   playerCompanyName: string;
+  playerManufacturerIdentityId?: string;
 }
 
 export interface ManufacturerIdentity {
