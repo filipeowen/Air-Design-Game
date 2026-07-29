@@ -1,5 +1,14 @@
 import { formatMoney } from "@/game/finance/calculations";
-import type { GameEmail, GameEmailCategory, GameEmailPriority, GameState, MonthlyTurnReport } from "@/game/types";
+import type {
+  GameEmail,
+  GameEmailAction,
+  GameEmailCategory,
+  GameEmailPriority,
+  GameEmailRelatedEntityType,
+  GameEmailStatus,
+  GameState,
+  MonthlyTurnReport
+} from "@/game/types";
 import { formatGameDate } from "@/game/utils/date";
 
 const MAX_EMAILS = 260;
@@ -8,12 +17,23 @@ interface EmailDraft {
   turn: number;
   date: GameEmail["date"];
   from: string;
+  fromRole?: string;
+  fromOrganization?: string;
   to: string;
   category: GameEmailCategory;
   priority: GameEmailPriority;
   subject: string;
   preview: string;
   body: string[];
+  archived?: boolean;
+  requiresAction?: boolean;
+  deadlineTurn?: number;
+  status?: GameEmailStatus;
+  actions?: GameEmailAction[];
+  relatedEntity?: {
+    type: GameEmailRelatedEntityType;
+    id: string;
+  };
   fromEntityId?: string;
   toEntityId?: string;
   relatedEntityId?: string;
@@ -27,62 +47,114 @@ export function createOpeningEmails(state: GameState): GameEmail[] {
     buildEmail(0, {
       turn: state.turn,
       date: state.date,
-      from: "Board Office",
+      from: "Board of Directors",
+      fromRole: "Board office",
       to,
       toEntityId: player?.id,
-      category: "executive",
-      priority: "high",
-      subject: "Board memorandum: January 1970 operating mandate",
+      category: "board",
+      priority: "important",
+      subject: `Welcome to ${to}`,
       preview: "The board expects a disciplined path from design work to certified aircraft and airline commitments.",
       body: [
-        "The company begins January 1970 with capital, a medium final assembly facility, and a modest engineering base.",
+        `${to} begins January 1970 with ${formatMoney(player?.cash ?? 0)} in cash, a medium final assembly facility, and a modest engineering base.`,
         "Your immediate priorities are to launch a credible aircraft program, invest in research, and build airline confidence before competitors lock up the market.",
         "Major company updates, airline correspondence, market news, and technical progress will arrive here."
+      ],
+      actions: [
+        navigateAction("review-overview", "Review company overview", "/overview"),
+        navigateAction("review-research", "Review available research", "/research"),
+        navigateAction("begin-design", "Begin first aircraft design", "/development", "design-studio")
       ]
     }),
     buildEmail(1, {
       turn: state.turn,
       date: state.date,
-      from: "Research Directorate",
+      from: "Director of Research",
+      fromOrganization: "Research Directorate",
       to,
       toEntityId: player?.id,
       category: "research",
       priority: "normal",
-      subject: "R&D briefing: technology access and research slots",
+      subject: "Research department awaiting direction",
       preview: "Advanced systems will remain unavailable in aircraft designs until your teams complete the required research.",
       body: [
-        "The design studio is now tied to the research tree. Locked technologies cannot be selected for new aircraft until they are completed.",
+        `${(player?.employees.scientists.headcount ?? 0).toLocaleString()} scientists are on payroll and ready for assignment.`,
+        "The design studio is tied to the research tree. Locked technologies cannot be selected for new aircraft until they are completed.",
         "Research can be started before its historical year, but ahead-of-time work carries a penalty unless breakthrough projects reduce it.",
-        "Your current facilities support a limited number of simultaneous research projects."
-      ]
+        "Idle scientists still draw salaries, so the board recommends opening the research tree before ending the month."
+      ],
+      requiresAction: true,
+      status: "open",
+      actions: [navigateAction("choose-research", "Choose research project", "/research")]
     }),
     buildEmail(2, {
       turn: state.turn,
       date: state.date,
-      from: "Commercial Desk",
+      from: "Chief Engineer",
+      fromOrganization: "Engineering",
       to,
       toEntityId: player?.id,
-      category: "airline",
+      category: "engineering",
       priority: "normal",
-      subject: "Airline relations desk opened",
-      preview: "Airlines will contact us through purchase agreements, delivery updates, and market feedback.",
+      subject: "Proposal for our first commercial aircraft program",
+      preview: "Engineering recommends reviewing the Design Studio before the market settles around competitor products.",
       body: [
-        "The sales team has opened correspondence with regional and mainline carriers.",
-        "New orders, deliveries, and relationship-sensitive airline communications will be routed to this inbox.",
-        "Until you certify an aircraft, incoming commercial mail will be light."
-      ]
+        "The available starting work can target regional, narrow-body, or wide-body markets, with sharply different risk and capital needs.",
+        "A narrow-body design is a reasonable first review because airlines already show demand and the existing factory can support that class.",
+        "Open the Design Studio to inspect capacity, range, engines, materials, and projected finances before authorizing a program."
+      ],
+      requiresAction: true,
+      status: "open",
+      actions: [navigateAction("open-design-studio", "Open Design Studio", "/development", "design-studio")]
+    }),
+    buildEmail(3, {
+      turn: state.turn,
+      date: state.date,
+      from: "Vice President of Manufacturing",
+      fromOrganization: "Manufacturing",
+      to,
+      toEntityId: player?.id,
+      category: "manufacturing",
+      priority: "normal",
+      subject: "Factory capacity and staffing report",
+      preview: "Final assembly capacity is available, but no certified company aircraft are assigned to production yet.",
+      body: [
+        `The factory network starts with ${player?.factories.length ?? 0} active facility and ${(player?.employees.factoryWorkers.headcount ?? 0).toLocaleString()} factory workers.`,
+        "The existing facility can support regional and narrow-body aircraft once a model is certified.",
+        "Factory changes, worker shortages, production assignments, and delivery readiness will be routed through this inbox."
+      ],
+      actions: [navigateAction("review-factory", "Review factory network", "/factory")]
+    }),
+    buildEmail(4, {
+      turn: state.turn,
+      date: state.date,
+      from: "Chief Financial Officer",
+      fromOrganization: "Finance",
+      to,
+      toEntityId: player?.id,
+      category: "finance",
+      priority: "normal",
+      subject: "Opening financial position",
+      preview: "Cash is healthy for a first program, but payroll and development spending will begin immediately.",
+      body: [
+        `Opening cash: ${formatMoney(player?.cash ?? 0)}.`,
+        "The largest near-term risks are idle payroll, unfunded development work, and factory costs before aircraft deliveries begin.",
+        "Finance will email warnings when monthly losses or cash runway cross important thresholds."
+      ],
+      actions: [navigateAction("review-finance", "Review finances", "/finance")]
     })
   ];
 }
 
 export function getGameEmails(state: GameState): GameEmail[] {
   const candidate = state as GameState & { emails?: GameEmail[] };
-  return candidate.emails ?? createLegacyReportEmails(state);
+  return normalizeInbox(candidate.emails ?? createLegacyReportEmails(state));
 }
 
 export function ensureEmailInbox(state: GameState): GameEmail[] {
   const candidate = state as GameState & { emails?: GameEmail[] };
   candidate.emails ??= createLegacyReportEmails(state);
+  candidate.emails = normalizeInbox(candidate.emails);
   return candidate.emails;
 }
 
@@ -94,13 +166,21 @@ export function appendGameEmail(state: GameState, draft: Omit<EmailDraft, "turn"
     date: draft.date ?? state.date,
     to: draft.to ?? player?.name ?? "Executive Office",
     from: draft.from,
+    fromRole: draft.fromRole,
+    fromOrganization: draft.fromOrganization,
     category: draft.category,
     priority: draft.priority,
     subject: draft.subject,
     preview: draft.preview,
     body: draft.body,
+    archived: draft.archived,
+    requiresAction: draft.requiresAction,
+    deadlineTurn: draft.deadlineTurn,
+    status: draft.status,
+    actions: draft.actions,
     fromEntityId: draft.fromEntityId,
     toEntityId: draft.toEntityId ?? player?.id,
+    relatedEntity: draft.relatedEntity,
     relatedEntityId: draft.relatedEntityId,
     read: draft.read
   });
@@ -134,8 +214,8 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
     from: "Executive Office",
     to,
     toEntityId: player.id,
-    category: "executive",
-    priority: report.warnings.length > 0 ? "high" : "normal",
+    category: "board",
+    priority: report.warnings.length > 0 ? "important" : "normal",
     subject: `Monthly operating brief: ${dateLabel}`,
     preview: report.summary,
     body: [
@@ -144,6 +224,10 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
         ? `Monthly result: ${formatMoney(playerFinancial.profitOrLoss)}. Ending cash: ${formatMoney(playerFinancial.endingCash)}.`
         : "Finance has not closed the month yet.",
       `${playerOrders.length} new airline order${playerOrders.length === 1 ? "" : "s"}, ${playerDeliveries.length} delivery update${playerDeliveries.length === 1 ? "" : "s"}, ${playerResearch.length} research completion${playerResearch.length === 1 ? "" : "s"}.`
+    ],
+    actions: [
+      navigateAction("open-overview", "Open overview", "/overview"),
+      navigateAction("review-finance", "Review finances", "/finance", "cash-flow")
     ]
   });
 
@@ -156,14 +240,19 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       to,
       toEntityId: player.id,
       category: "research",
-      priority: "high",
+      priority: "important",
       subject: `Research complete: ${technologyName}`,
       preview: `${technologyName} has moved from laboratory work into the usable company technology base.`,
       body: [
         message,
         "The design studio and future aircraft programs can now use the unlocked capability where applicable.",
         "Review the aircraft design options and research tree before committing the next major program."
-      ]
+      ],
+      actions: [navigateAction("view-technology", "View unlocked technology", "/research", technologyName)],
+      relatedEntity: {
+        type: "research",
+        id: technologyName
+      }
     });
   }
 
@@ -174,15 +263,16 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       from: "Program Management Office",
       to,
       toEntityId: player.id,
-      category: "development",
-      priority: message.includes("issue") ? "high" : "normal",
+      category: "engineering",
+      priority: message.includes("issue") ? "important" : "normal",
       subject: message.includes("entered service") ? "Aircraft certified for service" : "Aircraft program update",
       preview: message,
       body: [
         message,
         "Engineering progress has been reflected in the development program ledger.",
         "Budget and engineer assignments can be adjusted from the Development tab."
-      ]
+      ],
+      actions: [navigateAction("review-programs", "Review program", "/development", "programs")]
     });
   }
 
@@ -193,7 +283,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       from: "Industrial Operations",
       to,
       toEntityId: player.id,
-      category: "operations",
+      category: "manufacturing",
       priority: "normal",
       subject: "Factory construction complete",
       preview: message,
@@ -201,7 +291,8 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
         message,
         "The facility is now available for production assignment.",
         "Select a certified aircraft in the Factories tab to start using the new capacity."
-      ]
+      ],
+      actions: [navigateAction("review-factory", "Review factory network", "/factory")]
     });
   }
 
@@ -215,8 +306,8 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       to,
       fromEntityId: airline?.id,
       toEntityId: player.id,
-      category: "airline",
-      priority: "high",
+      category: "orders",
+      priority: "important",
       subject: `Purchase agreement: ${model?.name ?? "Aircraft order"}`,
       preview: `${airline?.name ?? "An airline"} ordered ${order.quantity} aircraft with ${formatMoney(order.depositPaid)} deposited.`,
       body: [
@@ -224,6 +315,11 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
         `Negotiated unit price: ${formatMoney(order.pricePerAircraft)}. Deposit received: ${formatMoney(order.depositPaid)}.`,
         `Planned delivery window begins around turn ${order.deliveryStartTurn}.`
       ],
+      actions: [navigateAction("review-order", "Review proposal", "/orders", order.id)],
+      relatedEntity: {
+        type: "order",
+        id: order.id
+      },
       relatedEntityId: order.id
     });
   }
@@ -235,7 +331,7 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       from: "Delivery Center",
       to,
       toEntityId: player.id,
-      category: "airline",
+      category: "orders",
       priority: "normal",
       subject: "Aircraft delivery confirmation",
       preview: message,
@@ -243,7 +339,8 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
         message,
         "Final delivery payments have been applied to cash this month.",
         "Reliable deliveries improve customer trust and future order competitiveness."
-      ]
+      ],
+      actions: [navigateAction("view-delivery-schedule", "View delivery schedule", "/orders", "delivery-calendar")]
     });
   }
 
@@ -254,11 +351,16 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       from: "Industry News Desk",
       to,
       toEntityId: player.id,
-      category: "market",
-      priority: event.severity >= 65 ? "high" : "normal",
+      category: "market-intelligence",
+      priority: event.severity >= 65 ? "important" : "normal",
       subject: event.title,
       preview: event.description,
       body: [event.description, ...event.effects.map((effect) => `Effect: ${effect}`)],
+      actions: [navigateAction("view-market-impact", "View market impact", "/overview", event.id)],
+      relatedEntity: {
+        type: "event",
+        id: event.id
+      },
       relatedEntityId: event.id
     });
   }
@@ -270,11 +372,12 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       from: "Market Intelligence",
       to,
       toEntityId: player.id,
-      category: "competitor",
+      category: "competitors",
       priority: "normal",
       subject: "Competitor activity brief",
       preview: report.competitorActions.slice(0, 2).join(" "),
-      body: report.competitorActions.slice(0, 8)
+      body: report.competitorActions.slice(0, 8),
+      actions: [navigateAction("view-market-intel", "View market impact", "/overview", "competitors")]
     });
   }
 
@@ -292,7 +395,10 @@ export function createTurnEmails(state: GameState, report: MonthlyTurnReport): G
       body: [
         warning,
         "The issue has been flagged for executive review before the next month closes."
-      ]
+      ],
+      requiresAction: true,
+      status: "open",
+      actions: [navigateAction("review-finances", "Review finances", "/finance", "cash-flow")]
     });
   }
 
@@ -330,7 +436,7 @@ function createLegacyReportEmails(state: GameState): GameEmail[] {
         from: messageIndex === 0 ? "Executive Office" : "Archive Import",
         to: player.name,
         toEntityId: player.id,
-        category: messageIndex === 0 ? "executive" : "operations",
+        category: messageIndex === 0 ? "board" : "general",
         priority: "normal",
         subject: messageIndex === 0 ? `Archived monthly brief: ${formatGameDate(report.date)}` : "Archived campaign update",
         preview: message,
@@ -342,11 +448,13 @@ function createLegacyReportEmails(state: GameState): GameEmail[] {
 }
 
 function buildEmail(index: number, draft: EmailDraft): GameEmail {
-  return {
+  return normalizeEmail({
     id: `email-${draft.turn}-${draft.category}-${slug(draft.subject)}-${index}`,
     turn: draft.turn,
     date: draft.date,
     from: draft.from,
+    fromRole: draft.fromRole,
+    fromOrganization: draft.fromOrganization,
     to: draft.to,
     category: draft.category,
     priority: draft.priority,
@@ -354,12 +462,90 @@ function buildEmail(index: number, draft: EmailDraft): GameEmail {
     preview: draft.preview,
     body: draft.body,
     read: draft.read ?? false,
+    archived: draft.archived ?? false,
+    requiresAction: draft.requiresAction ?? false,
+    deadlineTurn: draft.deadlineTurn,
+    status: draft.status ?? (draft.requiresAction ? "open" : "informational"),
+    actions: draft.actions ?? [],
     fromEntityId: draft.fromEntityId,
     toEntityId: draft.toEntityId,
+    relatedEntity: draft.relatedEntity,
     relatedEntityId: draft.relatedEntityId
-  };
+  });
 }
 
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "message";
+}
+
+function navigateAction(id: string, label: string, targetRoute: string, targetEntityId?: string): GameEmailAction {
+  return {
+    id,
+    label,
+    actionType: "navigate",
+    targetRoute,
+    targetEntityId
+  };
+}
+
+function normalizeInbox(emails: GameEmail[]): GameEmail[] {
+  return emails.map((email) => normalizeEmail(email));
+}
+
+function normalizeEmail(email: GameEmail): GameEmail {
+  const candidate = email as GameEmail & {
+    category: GameEmailCategory | "executive" | "development" | "airline" | "operations" | "market" | "competitor";
+    priority: GameEmailPriority | "low" | "high";
+  };
+  return {
+    ...email,
+    category: normalizeCategory(candidate.category),
+    priority: normalizePriority(candidate.priority),
+    archived: email.archived ?? false,
+    requiresAction: email.requiresAction ?? false,
+    status: email.status ?? (email.requiresAction ? "open" : "informational"),
+    actions: email.actions ?? [],
+    relatedEntity:
+      email.relatedEntity ??
+      (email.relatedEntityId
+        ? {
+            type: "event",
+            id: email.relatedEntityId
+          }
+        : undefined)
+  };
+}
+
+function normalizeCategory(
+  category: GameEmailCategory | "executive" | "development" | "airline" | "operations" | "market" | "competitor"
+): GameEmailCategory {
+  if (category === "executive") {
+    return "board";
+  }
+  if (category === "development") {
+    return "engineering";
+  }
+  if (category === "airline") {
+    return "airline-relations";
+  }
+  if (category === "operations") {
+    return "manufacturing";
+  }
+  if (category === "market") {
+    return "market-intelligence";
+  }
+  if (category === "competitor") {
+    return "competitors";
+  }
+  return category;
+}
+
+function normalizePriority(priority: GameEmailPriority | "low" | "high"): GameEmailPriority {
+  if (priority === "low") {
+    return "informational";
+  }
+  if (priority === "high") {
+    return "important";
+  }
+  return priority;
 }

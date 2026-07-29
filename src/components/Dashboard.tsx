@@ -2,13 +2,14 @@
 
 import {
   AlertTriangle,
+  Archive,
   Banknote,
   BriefcaseBusiness,
-  Building2,
   CalendarDays,
   Check,
   Clock3,
   Factory,
+  FileText,
   FlaskConical,
   Gauge,
   Lock,
@@ -20,6 +21,8 @@ import {
   Play,
   Plus,
   Save,
+  Search,
+  Settings,
   Trash2,
   TrendingUp,
   Users
@@ -44,6 +47,8 @@ import {
 } from "@/game/research/rules";
 import {
   assignPlayerProductionLine,
+  acknowledgePlayerEmail,
+  archivePlayerEmail,
   buildPlayerFactory,
   changeEmployeeHeadcount,
   closePlayerFactory,
@@ -57,6 +62,13 @@ import {
 } from "@/game/simulation/actions";
 import { createNewGame } from "@/game/simulation/createGame";
 import { processMonthlyTurn } from "@/game/simulation/processMonthlyTurn";
+import {
+  buildGameDeepLink,
+  emailActionToDeepLink,
+  parseGameDeepLink,
+  type GameDeepLinkTarget,
+  type GameSection
+} from "@/game/navigation/deepLinks";
 import type {
   AircraftCategory,
   AircraftDesignInput,
@@ -82,48 +94,56 @@ import {
 
 type Tab =
   | "overview"
-  | "aircraft"
+  | "email"
   | "development"
   | "research"
-  | "employees"
-  | "factories"
-  | "orders"
-  | "competitors"
-  | "finances"
-  | "inbox"
-  | "saves";
+  | "factory"
+  | "finance"
+  | "orders";
 
 const TABS: { id: Tab; label: string; icon: typeof Gauge }[] = [
   { id: "overview", label: "Overview", icon: Gauge },
-  { id: "inbox", label: "Inbox", icon: Mail },
-  { id: "aircraft", label: "Aircraft", icon: Plane },
-  { id: "development", label: "Development", icon: BriefcaseBusiness },
+  { id: "email", label: "Email", icon: Mail },
   { id: "research", label: "Research", icon: FlaskConical },
-  { id: "employees", label: "Employees", icon: Users },
-  { id: "factories", label: "Factories", icon: Factory },
+  { id: "development", label: "Development", icon: BriefcaseBusiness },
+  { id: "factory", label: "Factory", icon: Factory },
+  { id: "finance", label: "Finance", icon: Banknote },
   { id: "orders", label: "Orders", icon: PackageCheck },
-  { id: "competitors", label: "Competitors", icon: Building2 },
-  { id: "finances", label: "Finances", icon: Banknote },
-  { id: "saves", label: "Saves", icon: Save }
 ];
 
-const EMAIL_FILTERS: { id: GameEmailCategory | "all"; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "executive", label: "Executive" },
-  { id: "research", label: "Research" },
-  { id: "development", label: "Programs" },
-  { id: "airline", label: "Airlines" },
-  { id: "operations", label: "Ops" },
-  { id: "market", label: "News" },
-  { id: "competitor", label: "Intel" },
-  { id: "finance", label: "Finance" }
+type EmailFolder =
+  | "inbox"
+  | "action-required"
+  | "unread"
+  | "board"
+  | "airline-relations"
+  | "engineering"
+  | "research"
+  | "manufacturing"
+  | "finance"
+  | "market-intelligence"
+  | "archived";
+
+const EMAIL_FOLDERS: { id: EmailFolder; label: string; category?: GameEmailCategory }[] = [
+  { id: "inbox", label: "Inbox" },
+  { id: "action-required", label: "Action required" },
+  { id: "unread", label: "Unread" },
+  { id: "board", label: "Board", category: "board" },
+  { id: "airline-relations", label: "Airlines", category: "airline-relations" },
+  { id: "engineering", label: "Engineering", category: "engineering" },
+  { id: "research", label: "Research", category: "research" },
+  { id: "manufacturing", label: "Factory", category: "manufacturing" },
+  { id: "finance", label: "Finance", category: "finance" },
+  { id: "market-intelligence", label: "Market intelligence", category: "market-intelligence" },
+  { id: "archived", label: "Archived" }
 ];
 
 const DEFAULT_DESIGN_CATEGORY: AircraftCategory = "narrow-body";
 
 export function Dashboard() {
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("inbox");
+  const [activeTab, setActiveTab] = useState<Tab>("email");
+  const [focusedTarget, setFocusedTarget] = useState<GameDeepLinkTarget>({ section: "email" });
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
   const [designInput, setDesignInput] = useState<AircraftDesignInput>(() =>
     createDefaultDesignInputForUnlocked(
@@ -133,6 +153,18 @@ export function Dashboard() {
     )
   );
   const [statusMessage, setStatusMessage] = useState("Ready");
+
+  useEffect(() => {
+    function syncFromLocation() {
+      const target = parseGameDeepLink(window.location.pathname, window.location.search);
+      setActiveTab(target.section);
+      setFocusedTarget(target);
+    }
+
+    syncFromLocation();
+    window.addEventListener("popstate", syncFromLocation);
+    return () => window.removeEventListener("popstate", syncFromLocation);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -171,19 +203,31 @@ export function Dashboard() {
   const playerDeliveryEvents = lastReport && player ? lastReport.deliveries.filter((delivery) => delivery.startsWith(`${player.name} delivered`)).length : 0;
   const emails = gameState ? getGameEmails(gameState) : [];
   const unreadEmailCount = emails.filter((email) => !email.read).length;
+  const actionRequiredEmailCount = emails.filter((email) => email.requiresAction && email.status === "open" && !email.archived).length;
 
   if (!gameState || !player) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-700">Loading campaign...</div>;
+  }
+
+  function navigate(target: GameDeepLinkTarget) {
+    const href = buildGameDeepLink(target);
+    window.history.pushState({}, "", href);
+    setActiveTab(target.section);
+    setFocusedTarget(target);
   }
 
   async function endTurn() {
     if (!gameState) {
       return;
     }
+    const warnings = getEndTurnWarnings(gameState);
+    if (warnings.length > 0 && !window.confirm(`Before ending the month:\n\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n\nContinue anyway?`)) {
+      return;
+    }
     const result = processMonthlyTurn(gameState);
     const newEmailCount = Math.max(0, getGameEmails(result.gameState).length - getGameEmails(gameState).length);
     setGameState(result.gameState);
-    setActiveTab("inbox");
+    navigate({ section: "email" });
     setStatusMessage(`Inbox received ${newEmailCount} new message${newEmailCount === 1 ? "" : "s"}.`);
     if (result.gameState.settings.autosave) {
       await saveGameToSlot("autosave", result.gameState);
@@ -252,9 +296,17 @@ export function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <IconButton title="New campaign" onClick={newCampaign} icon={Plus} label="New" />
-            <IconButton title="Manual save" onClick={manualSave} icon={Save} label="Save" />
+          <HeaderStats
+            cash={player.cash}
+            monthlyResult={playerFinancial?.profitOrLoss ?? 0}
+            unreadEmails={unreadEmailCount}
+            actionRequired={actionRequiredEmailCount}
+            activeResearch={player.researchProjects.filter((project) => project.status === "active").length}
+            activePrograms={player.aircraftPrograms.filter((program) => program.status === "active").length}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <SaveMenu saveSlots={saveSlots} loadSlot={loadSlot} deleteSlot={deleteSlot} manualSave={manualSave} newCampaign={newCampaign} />
+            <IconButton title="Settings" onClick={() => setStatusMessage("Settings will move here in a later pass.")} icon={Settings} label="Settings" />
             <IconButton title="End month" onClick={endTurn} icon={Play} label="End Turn" primary />
           </div>
         </div>
@@ -268,7 +320,7 @@ export function Dashboard() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => navigate({ section: tab.id })}
                 className={`focus-ring flex min-w-fit items-center gap-2 rounded-md px-3 py-2 text-sm transition lg:w-full ${
                   active ? "bg-[#0f766e] text-white" : "text-neutral-700 hover:bg-[#eef3ee]"
                 }`}
@@ -291,15 +343,16 @@ export function Dashboard() {
           />
 
           {activeTab === "overview" && (
-            <OverviewTab gameState={gameState} playerId={player.id} playerFinancial={playerFinancial} />
+            <OverviewTab gameState={gameState} playerId={player.id} playerFinancial={playerFinancial} navigate={navigate} />
           )}
-          {activeTab === "aircraft" && (
-            <AircraftTab
+          {activeTab === "development" && (
+            <DevelopmentTab
+              gameState={gameState}
+              mutateGame={mutateGame}
               designInput={designInput}
               setDesignInput={setDesignInput}
               designPreview={designPreview}
-              unlockedTechnologyIds={player.unlockedTechnologyIds}
-              technologies={gameState.technologies}
+              focusedTarget={focusedTarget}
               launch={() =>
                 mutateGame(
                   (state) => launchPlayerAircraftProgram(state, designInput),
@@ -308,41 +361,154 @@ export function Dashboard() {
               }
             />
           )}
-          {activeTab === "development" && (
-            <DevelopmentTab
-              gameState={gameState}
-              mutateGame={mutateGame}
-            />
-          )}
           {activeTab === "research" && (
             <ResearchTab
               gameState={gameState}
               mutateGame={mutateGame}
+              focusedTarget={focusedTarget}
             />
           )}
-          {activeTab === "employees" && (
-            <EmployeesTab
-              gameState={gameState}
-              mutateGame={mutateGame}
-            />
-          )}
-          {activeTab === "factories" && (
+          {activeTab === "factory" && (
             <FactoriesTab
               gameState={gameState}
               mutateGame={mutateGame}
+              focusedTarget={focusedTarget}
             />
           )}
-          {activeTab === "orders" && <OrdersTab gameState={gameState} />}
-          {activeTab === "competitors" && <CompetitorsTab gameState={gameState} />}
-          {activeTab === "finances" && <FinancesTab gameState={gameState} />}
-          {activeTab === "inbox" && <InboxTab key={gameState.turn} gameState={gameState} mutateGame={mutateGame} />}
-          {activeTab === "saves" && (
-            <SavesTab saveSlots={saveSlots} loadSlot={loadSlot} deleteSlot={deleteSlot} manualSave={manualSave} />
-          )}
+          {activeTab === "orders" && <OrdersTab gameState={gameState} focusedTarget={focusedTarget} navigate={navigate} />}
+          {activeTab === "finance" && <FinancesTab gameState={gameState} />}
+          {activeTab === "email" && <InboxTab key={gameState.turn} gameState={gameState} mutateGame={mutateGame} navigate={navigate} focusedTarget={focusedTarget} />}
         </div>
       </div>
     </main>
   );
+}
+
+function HeaderStats({
+  cash,
+  monthlyResult,
+  unreadEmails,
+  actionRequired,
+  activeResearch,
+  activePrograms
+}: {
+  cash: number;
+  monthlyResult: number;
+  unreadEmails: number;
+  actionRequired: number;
+  activeResearch: number;
+  activePrograms: number;
+}) {
+  const stats = [
+    { label: "Cash", value: formatMoney(cash) },
+    { label: "Month", value: formatMoney(monthlyResult) },
+    { label: "Unread", value: unreadEmails.toString() },
+    { label: "Actions", value: actionRequired.toString() },
+    { label: "Research", value: activeResearch.toString() },
+    { label: "Programs", value: activePrograms.toString() }
+  ];
+
+  return (
+    <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+      {stats.map((stat) => (
+        <div key={stat.label} className="rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase text-neutral-500">{stat.label}</div>
+          <div className="mt-0.5 truncate text-sm font-semibold">{stat.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SaveMenu({
+  saveSlots,
+  loadSlot,
+  deleteSlot,
+  manualSave,
+  newCampaign
+}: {
+  saveSlots: SaveSlotSummary[];
+  loadSlot: (slotId: string) => void;
+  deleteSlot: (slotId: string) => void;
+  manualSave: () => void;
+  newCampaign: () => void;
+}) {
+  return (
+    <details className="relative">
+      <summary className="focus-ring inline-flex h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-[#d8ddd2] bg-white px-3 text-sm font-medium text-neutral-700 transition hover:bg-[#eef3ee]">
+        <Save size={16} />
+        Save
+      </summary>
+      <div className="absolute right-0 z-50 mt-2 w-80 rounded-lg border border-[#d8ddd2] bg-white p-3 shadow-xl">
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={manualSave} className="focus-ring rounded-md border border-[#d8ddd2] px-3 py-2 text-sm font-medium hover:bg-[#eef3ee]">
+            Manual save
+          </button>
+          <button onClick={newCampaign} className="focus-ring rounded-md border border-[#d8ddd2] px-3 py-2 text-sm font-medium hover:bg-[#eef3ee]">
+            New campaign
+          </button>
+        </div>
+        <div className="mt-3 max-h-72 overflow-y-auto">
+          {saveSlots.length === 0 ? (
+            <p className="px-1 py-2 text-sm text-neutral-600">No saves yet.</p>
+          ) : (
+            saveSlots.map((slot) => (
+              <div key={slot.slotId} className="border-t border-[#edf0ea] py-2 first:border-t-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{slot.slotId}</div>
+                    <div className="truncate text-xs text-neutral-600">{slot.companyName} · {slot.dateLabel}</div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => loadSlot(slot.slotId)} className="focus-ring rounded px-2 py-1 text-xs font-semibold text-[#0f766e] hover:bg-[#eef3ee]">
+                      Load
+                    </button>
+                    <button onClick={() => deleteSlot(slot.slotId)} className="focus-ring rounded px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function getEndTurnWarnings(state: GameState): string[] {
+  const player = state.manufacturers[state.playerCompanyId];
+  if (!player) {
+    return ["Player company data is missing."];
+  }
+
+  const warnings: string[] = [];
+  const emails = getGameEmails(state);
+  if (emails.some((email) => email.requiresAction && email.status === "open" && !email.archived)) {
+    warnings.push("Important emails still require a decision.");
+  }
+  if (!player.researchProjects.some((project) => project.status === "active")) {
+    warnings.push("No research project is active.");
+  }
+  if (player.aircraftPrograms.some((program) => program.status === "active" && program.assignedEngineers <= 0)) {
+    warnings.push("An aircraft program has no engineers assigned.");
+  }
+  const assignedWorkers = getAssignedFactoryWorkers(player);
+  if (assignedWorkers > player.employees.factoryWorkers.headcount * 0.95) {
+    warnings.push("Factory workforce is critically tight.");
+  }
+  if (player.cash < 250_000_000) {
+    warnings.push("Cash reserves are dangerously low.");
+  }
+  const dueSoon = Object.values(state.orders).some(
+    (order) => order.manufacturerId === player.id && order.status !== "completed" && order.deliveryStartTurn - state.turn <= 2
+  );
+  if (dueSoon) {
+    warnings.push("An order delivery window is approaching.");
+  }
+
+  return warnings;
 }
 
 function KpiStrip({
@@ -390,43 +556,62 @@ function KpiStrip({
 function OverviewTab({
   gameState,
   playerId,
-  playerFinancial
+  playerFinancial,
+  navigate
 }: {
   gameState: GameState;
   playerId: string;
   playerFinancial?: MonthlyFinancialReport;
+  navigate: (target: GameDeepLinkTarget) => void;
 }) {
   const player = gameState.manufacturers[playerId]!;
   const lastReport = gameState.monthlyHistory.at(-1);
   const activeResearch = player.researchProjects.filter((project) => project.status === "active");
   const warnings = [...(playerFinancial?.warnings ?? []), ...(lastReport?.warnings ?? [])];
-  const latestEmails = sortEmails(getGameEmails(gameState)).slice(0, 4);
+  const emails = sortEmails(getGameEmails(gameState));
+  const latestEmails = emails.filter((email) => !email.archived).slice(0, 4);
+  const actionRequired = emails.filter((email) => email.requiresAction && email.status === "open" && !email.archived).length;
+  const activeFactories = player.factories.filter((factory) => getFactoryStatus(factory) === "active");
+  const activePrograms = player.aircraftPrograms.filter((program) => program.status === "active");
+  const orders = Object.values(gameState.orders).filter((order) => order.manufacturerId === player.id);
+  const backlog = orders.reduce((sum, order) => sum + Math.max(0, order.quantity - order.delivered), 0);
+  const competitors = Object.values(gameState.manufacturers).filter((manufacturer) => !manufacturer.isPlayer);
+  const strongestCompetitor = competitors
+    .slice()
+    .sort((a, b) => b.marketShare["narrow-body"] + b.marketShare["wide-body"] - (a.marketShare["narrow-body"] + a.marketShare["wide-body"]))[0];
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+    <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
       <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Operations</h2>
+          <h2 className="text-lg font-semibold">Executive Dashboard</h2>
           <span className="text-sm text-neutral-600">{formatGameDate(gameState.date)}</span>
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          <Metric label="Cash" value={formatMoney(player.cash)} />
+          <Metric label="Monthly result" value={playerFinancial ? formatMoney(playerFinancial.profitOrLoss) : "$0"} />
+          <Metric label="Backlog" value={backlog.toString()} />
+          <Metric label="Health" value={warnings.length > 0 ? "Review" : "Stable"} />
           <Metric label="Certified models" value={player.aircraftModels.length.toString()} />
-          <Metric label="Active factories" value={player.factories.filter((factory) => getFactoryStatus(factory) === "active").length.toString()} />
+          <Metric label="Active factories" value={activeFactories.length.toString()} />
           <Metric label="Research projects" value={activeResearch.length.toString()} />
+          <Metric label="Action emails" value={actionRequired.toString()} />
         </div>
-        <div className="mt-5">
-          <h3 className="text-sm font-semibold text-neutral-700">Latest Messages</h3>
-          <div className="mt-2 space-y-2">
-            {latestEmails.map((email) => (
-              <div key={email.id} className="rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-semibold">{email.subject}</span>
-                  <span className="text-xs text-neutral-500">{formatGameDate(email.date)}</span>
-                </div>
-                <p className="mt-1 text-sm text-neutral-600">{email.preview}</p>
-              </div>
-            ))}
-          </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          <OverviewTile title="Email" lines={[`${emails.filter((email) => !email.read).length} unread`, `${actionRequired} action-required`, `${emails.filter((email) => email.priority === "urgent").length} urgent`]} button="Open inbox" onClick={() => navigate({ section: "email" })} />
+          <OverviewTile title="Research" lines={[`${activeResearch.length} active projects`, `${player.employees.scientists.headcount.toLocaleString()} scientists`, `${activeResearch.length === 0 ? "Scientists idle" : "Research underway"}`]} button="Open research" onClick={() => navigate({ section: "research" })} />
+          <OverviewTile title="Development" lines={[`${activePrograms.length} active programs`, `${player.employees.engineers.headcount.toLocaleString()} engineers`, activePrograms[0]?.stage.replaceAll("-", " ") ?? "No active program"]} button="Open development" onClick={() => navigate({ section: "development" })} />
+          <OverviewTile title="Factory" lines={[`${activeFactories.length} active factories`, `${player.employees.factoryWorkers.headcount.toLocaleString()} workers`, `${player.factories.reduce((sum, factory) => sum + factory.productionLines.length, 0)} production lines`]} button="Open factory" onClick={() => navigate({ section: "factory" })} />
+          <OverviewTile title="Finance" lines={[`Cash ${formatMoney(player.cash)}`, `Development ${playerFinancial ? formatMoney(playerFinancial.developmentExpenses) : "$0"}`, `Factory ${playerFinancial ? formatMoney(playerFinancial.factoryExpenses) : "$0"}`]} button="Open finance" onClick={() => navigate({ section: "finance" })} />
+          <OverviewTile title="Orders" lines={[`${orders.length} contracts`, `${backlog} aircraft backlog`, `${Object.values(gameState.airlines).length} tracked airlines`]} button="Open orders" onClick={() => navigate({ section: "orders" })} />
+        </div>
+        <div className="mt-5 rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-4">
+          <h3 className="text-sm font-semibold text-neutral-700">Market Intelligence</h3>
+          <p className="mt-2 text-sm text-neutral-600">
+            {strongestCompetitor
+              ? `${strongestCompetitor.name} is the most visible competitor in current share summaries. Major competitor moves will continue to arrive by email.`
+              : "Competitor activity will arrive through email and appear in contextual summaries."}
+          </p>
         </div>
       </section>
       <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
@@ -443,7 +628,53 @@ function OverviewTab({
             ))
           )}
         </div>
+        <div className="mt-5">
+          <h3 className="text-sm font-semibold text-neutral-700">Latest Messages</h3>
+          <div className="mt-2 space-y-2">
+            {latestEmails.map((email) => (
+              <button
+                key={email.id}
+                onClick={() => navigate({ section: "email", entityType: "email", entityId: email.id })}
+                className="focus-ring w-full rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2 text-left"
+              >
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="font-semibold">{email.subject}</span>
+                  <span className="text-xs text-neutral-500">{formatGameDate(email.date)}</span>
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm text-neutral-600">{email.preview}</p>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
+    </div>
+  );
+}
+
+function OverviewTile({
+  title,
+  lines,
+  button,
+  onClick
+}: {
+  title: string;
+  lines: string[];
+  button: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-[#d8ddd2] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <button onClick={onClick} className="focus-ring rounded-md px-2 py-1 text-xs font-semibold text-[#0f766e] hover:bg-[#eef3ee]">
+          {button}
+        </button>
+      </div>
+      <div className="mt-3 space-y-1 text-sm text-neutral-600">
+        {lines.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </div>
     </div>
   );
 }
@@ -674,50 +905,167 @@ function AircraftTab({
   );
 }
 
-function DevelopmentTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
+function DevelopmentTab({
+  gameState,
+  mutateGame,
+  designInput,
+  setDesignInput,
+  designPreview,
+  focusedTarget,
+  launch
+}: {
+  gameState: GameState;
+  mutateGame: (mutator: (state: GameState) => GameState, message: string) => void;
+  designInput: AircraftDesignInput;
+  setDesignInput: (value: AircraftDesignInput) => void;
+  designPreview: ReturnType<typeof calculateAircraftDesign>;
+  focusedTarget: GameDeepLinkTarget;
+  launch: () => void;
+}) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
+  const [section, setSection] = useState<"programs" | "design" | "portfolio" | "engineers">(
+    focusedTarget.entityId === "design-studio" ? "design" : "programs"
+  );
+
+  useEffect(() => {
+    if (focusedTarget.section !== "development") {
+      return;
+    }
+    if (focusedTarget.entityId === "design-studio") {
+      setSection("design");
+    } else if (focusedTarget.entityType === "aircraftProgram") {
+      setSection("programs");
+    }
+  }, [focusedTarget]);
+
   return (
     <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-      <h2 className="text-lg font-semibold">Aircraft Programs</h2>
-      <div className="mt-4 grid gap-3">
-        {player.aircraftPrograms.length === 0 ? (
-          <p className="text-sm text-neutral-600">No aircraft programs.</p>
-        ) : (
-          player.aircraftPrograms.map((program) => (
-            <div key={program.id} className="rounded-lg border border-[#d8ddd2] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">{program.name}</h3>
-                  <p className="mt-1 text-sm text-neutral-600">
-                    {program.stage.replaceAll("-", " ")} · {program.status}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <IconButton title="Increase funding" icon={Plus} label="Fund" onClick={() => mutateGame((state) => updatePlayerProgram(state, program.id, { monthlyBudget: program.monthlyBudget * 1.15 }), "Program funding increased.")} />
-                  <IconButton title={program.status === "paused" ? "Resume" : "Pause"} icon={Play} label={program.status === "paused" ? "Resume" : "Pause"} onClick={() => mutateGame((state) => updatePlayerProgram(state, program.id, { paused: program.status !== "paused" }), "Program status updated.")} />
-                  <IconButton title="Cancel" icon={Trash2} label="Cancel" danger onClick={() => mutateGame((state) => updatePlayerProgram(state, program.id, { cancelled: true }), "Program cancelled.")} />
-                </div>
-              </div>
-              <ProgressBar value={program.stageProgress} />
-              <div className="mt-3 grid gap-3 md:grid-cols-4">
-                <Metric label="Engineers" value={program.assignedEngineers.toLocaleString()} />
-                <Metric label="Monthly budget" value={formatMoney(program.monthlyBudget)} />
-                <Metric label="Spent" value={formatMoney(program.spentTotal)} />
-                <Metric label="Delays" value={`${program.delayMonths} mo`} />
-              </div>
-            </div>
-          ))
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Development</h2>
+          <p className="mt-1 text-sm text-neutral-600">Programs, aircraft design, certified portfolio, and engineering workforce.</p>
+        </div>
+        <SubtabBar
+          tabs={[
+            { id: "programs", label: "Programs" },
+            { id: "design", label: "Design Studio" },
+            { id: "portfolio", label: "Aircraft Portfolio" },
+            { id: "engineers", label: "Engineers" }
+          ]}
+          active={section}
+          setActive={(value) => setSection(value as typeof section)}
+        />
       </div>
+
+      {section === "programs" && (
+        <div className="mt-4 grid gap-3">
+          {player.aircraftPrograms.length === 0 ? (
+            <p className="text-sm text-neutral-600">No aircraft programs.</p>
+          ) : (
+            player.aircraftPrograms.map((program) => (
+              <div
+                key={program.id}
+                className={`rounded-lg border p-4 ${
+                  focusedTarget.entityId === program.id ? "border-[#0f766e] bg-[#eef8f5]" : "border-[#d8ddd2]"
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">{program.name}</h3>
+                    <p className="mt-1 text-sm text-neutral-600">
+                      {program.stage.replaceAll("-", " ")} · {program.status}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <IconButton title="Increase funding" icon={Plus} label="Fund" onClick={() => mutateGame((state) => updatePlayerProgram(state, program.id, { monthlyBudget: program.monthlyBudget * 1.15 }), "Program funding increased.")} />
+                    <IconButton title={program.status === "paused" ? "Resume" : "Pause"} icon={Play} label={program.status === "paused" ? "Resume" : "Pause"} onClick={() => mutateGame((state) => updatePlayerProgram(state, program.id, { paused: program.status !== "paused" }), "Program status updated.")} />
+                    <IconButton title="Cancel" icon={Trash2} label="Cancel" danger onClick={() => mutateGame((state) => updatePlayerProgram(state, program.id, { cancelled: true }), "Program cancelled.")} />
+                  </div>
+                </div>
+                <ProgressBar value={program.stageProgress} />
+                <div className="mt-3 grid gap-3 md:grid-cols-5">
+                  <Metric label="Engineers" value={program.assignedEngineers.toLocaleString()} />
+                  <Metric label="Monthly budget" value={formatMoney(program.monthlyBudget)} />
+                  <Metric label="Spent" value={formatMoney(program.spentTotal)} />
+                  <Metric label="Expected" value={`Turn ${program.expectedCertificationTurn}`} />
+                  <Metric label="Delays" value={`${program.delayMonths} mo`} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {section === "design" && (
+        <div className="mt-4">
+          <AircraftTab
+            designInput={designInput}
+            setDesignInput={setDesignInput}
+            designPreview={designPreview}
+            unlockedTechnologyIds={player.unlockedTechnologyIds}
+            technologies={gameState.technologies}
+            launch={launch}
+          />
+        </div>
+      )}
+
+      {section === "portfolio" && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
+            <thead className="border-b border-[#d8ddd2] text-left text-neutral-600">
+              <tr>
+                <th className="py-2 pr-4">Aircraft</th>
+                <th className="py-2 pr-4">Category</th>
+                <th className="py-2 pr-4">Capacity</th>
+                <th className="py-2 pr-4">Range</th>
+                <th className="py-2 pr-4">Reliability</th>
+                <th className="py-2 pr-4">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {player.aircraftModels.map((model) => (
+                <tr key={model.id} className="border-b border-[#edf0ea]">
+                  <td className="py-3 pr-4 font-semibold">{model.name}</td>
+                  <td className="py-3 pr-4">{AIRCRAFT_CATEGORIES[model.category].label}</td>
+                  <td className="py-3 pr-4">{model.capacity}</td>
+                  <td className="py-3 pr-4">{model.rangeNm.toLocaleString()} nm</td>
+                  <td className="py-3 pr-4">{model.reliability}</td>
+                  <td className="py-3 pr-4">{model.active ? "Certified" : "Retired"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {player.aircraftModels.length === 0 && <p className="mt-4 text-sm text-neutral-600">No certified aircraft yet.</p>}
+        </div>
+      )}
+
+      {section === "engineers" && (
+        <WorkforcePanel
+          title="Engineering Workforce"
+          group={player.employees.engineers}
+          assigned={player.aircraftPrograms.reduce((sum, program) => sum + (program.status === "active" ? program.assignedEngineers : 0), 0)}
+          mutateGame={mutateGame}
+          role="engineers"
+        />
+      )}
     </section>
   );
 }
 
-function ResearchTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
+function ResearchTab({
+  gameState,
+  mutateGame,
+  focusedTarget
+}: {
+  gameState: GameState;
+  mutateGame: (mutator: (state: GameState) => GameState, message: string) => void;
+  focusedTarget: GameDeepLinkTarget;
+}) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
   const activeProjects = player.researchProjects.filter((project) => project.status === "active");
   const researchSlots = getResearchSlotCount(player);
   const slotsAvailable = hasResearchSlotAvailable(player);
+  const assignedScientists = activeProjects.reduce((sum, project) => sum + project.assignedScientists, 0);
   return (
     <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -740,9 +1088,27 @@ function ResearchTab({ gameState, mutateGame }: { gameState: GameState; mutateGa
           })}
         </div>
       </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr]">
+        <WorkforcePanel
+          title="Scientist Workforce"
+          group={player.employees.scientists}
+          assigned={assignedScientists}
+          mutateGame={mutateGame}
+          role="scientists"
+        />
+        <div className="rounded-lg border border-[#d8ddd2] p-4">
+          <h3 className="text-sm font-semibold">Research Operations</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <Metric label="Slots" value={`${activeProjects.length}/${researchSlots}`} />
+            <Metric label="Idle scientists" value={Math.max(0, player.employees.scientists.headcount - assignedScientists).toLocaleString()} />
+            <Metric label="Monthly payroll" value={formatMoney(player.employees.scientists.headcount * player.employees.scientists.averageMonthlySalary)} />
+          </div>
+        </div>
+      </div>
       <ResearchTree
         gameState={gameState}
         slotsAvailable={slotsAvailable}
+        focusedTechnologyId={focusedTarget.section === "research" ? focusedTarget.entityId : undefined}
         startTechnology={(technologyId) =>
           mutateGame(
             (state) => startPlayerResearch(state, technologyId, 170, Math.round(state.technologies[technologyId]!.researchCost / 30)),
@@ -766,10 +1132,12 @@ const TREE_NODE_HEIGHT = 76;
 function ResearchTree({
   gameState,
   slotsAvailable,
+  focusedTechnologyId,
   startTechnology
 }: {
   gameState: GameState;
   slotsAvailable: boolean;
+  focusedTechnologyId?: string;
   startTechnology: (technologyId: string) => void;
 }) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
@@ -864,6 +1232,7 @@ function ResearchTree({
               technology={technology}
               gameState={gameState}
               slotsAvailable={slotsAvailable}
+              focused={focusedTechnologyId === technology.id || focusedTechnologyId === technology.name}
               position={nodePosition(technology)}
               startTechnology={startTechnology}
             />
@@ -877,12 +1246,14 @@ function TechnologyNode({
   technology,
   gameState,
   slotsAvailable,
+  focused,
   position,
   startTechnology
 }: {
   technology: Technology;
   gameState: GameState;
   slotsAvailable: boolean;
+  focused: boolean;
   position: { x: number; y: number };
   startTechnology: (technologyId: string) => void;
 }) {
@@ -913,7 +1284,9 @@ function TechnologyNode({
         title={buildTechnologyTooltip(technology, gameState)}
         disabled={!canStart}
         onClick={() => startTechnology(technology.id)}
-        className={`focus-ring relative flex h-[76px] w-full flex-col justify-between rounded-md border p-2 text-left text-xs transition ${className}`}
+        className={`focus-ring relative flex h-[76px] w-full flex-col justify-between rounded-md border p-2 text-left text-xs transition ${className} ${
+          focused ? "ring-4 ring-[#d8b75c]/60" : ""
+        }`}
       >
         <div className="flex items-start justify-between gap-2">
           <span className="line-clamp-2 text-sm font-semibold leading-4">{technology.name}</span>
@@ -973,40 +1346,19 @@ Prerequisites: ${prerequisites}
 Effects: ${technology.effects.join("; ")}`;
 }
 
-function EmployeesTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
-  const player = gameState.manufacturers[gameState.playerCompanyId]!;
-  return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-      <h2 className="text-lg font-semibold">Employees</h2>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {Object.values(player.employees).map((group) => (
-          <div key={group.role} className="rounded-lg border border-[#d8ddd2] p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">{labelRole(group.role)}</h3>
-                <p className="mt-1 text-sm text-neutral-600">{group.headcount.toLocaleString()} people</p>
-              </div>
-              <div className="flex gap-2">
-                <IconButton title="Hire 25" icon={Plus} label="25" onClick={() => mutateGame((state) => changeEmployeeHeadcount(state, group.role, 25), "Hiring complete.")} />
-                <IconButton title="Release 25" icon={Trash2} label="25" danger onClick={() => mutateGame((state) => changeEmployeeHeadcount(state, group.role, -25), "Headcount reduced.")} />
-              </div>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <Metric label="Skill" value={group.skill.toString()} />
-              <Metric label="Morale" value={group.morale.toString()} />
-              <Metric label="Productivity" value={group.productivity.toString()} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FactoriesTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
+function FactoriesTab({
+  gameState,
+  mutateGame,
+  focusedTarget
+}: {
+  gameState: GameState;
+  mutateGame: (mutator: (state: GameState) => GameState, message: string) => void;
+  focusedTarget: GameDeepLinkTarget;
+}) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
   const certifiedModels = player.aircraftModels.filter((model) => model.active);
   const [selectedCountry, setSelectedCountry] = useState("United States");
+  const [section, setSection] = useState<"network" | "production" | "workforce" | "deliveries">("network");
   const assignedWorkers = getAssignedFactoryWorkers(player);
   const totalFactoryWorkers = player.employees.factoryWorkers.headcount;
   const availableWorkers = Math.max(0, totalFactoryWorkers - assignedWorkers);
@@ -1016,6 +1368,16 @@ function FactoriesTab({ gameState, mutateGame }: { gameState: GameState; mutateG
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Factories</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <SubtabBar
+            tabs={[
+              { id: "network", label: "Factory Network" },
+              { id: "production", label: "Production Lines" },
+              { id: "workforce", label: "Workforce" },
+              { id: "deliveries", label: "Delivery Schedule" }
+            ]}
+            active={section}
+            setActive={(value) => setSection(value as typeof section)}
+          />
           <label className="text-sm font-medium">
             Country
             <select
@@ -1039,7 +1401,7 @@ function FactoriesTab({ gameState, mutateGame }: { gameState: GameState; mutateG
         <Metric label="Assigned to lines" value={assignedWorkers.toLocaleString()} />
         <Metric label="Available workers" value={availableWorkers.toLocaleString()} />
       </div>
-      <div className="mt-4 grid gap-3">
+      {(section === "network" || section === "production") && <div className="mt-4 grid gap-3">
         {player.factories.map((factory) => {
           const status = getFactoryStatus(factory);
           const activeLine = factory.productionLines.find((line) => line.status === "active") ?? factory.productionLines[0];
@@ -1048,7 +1410,16 @@ function FactoriesTab({ gameState, mutateGame }: { gameState: GameState; mutateG
           const canConfigure = status === "active" && supportedModels.length > 0;
 
           return (
-            <div key={factory.id} className={`rounded-lg border p-4 ${status === "closed" ? "border-[#d8ddd2] bg-[#f8faf6]" : "border-[#d8ddd2]"}`}>
+            <div
+              key={factory.id}
+              className={`rounded-lg border p-4 ${
+                focusedTarget.entityId === factory.id
+                  ? "border-[#0f766e] bg-[#eef8f5]"
+                  : status === "closed"
+                    ? "border-[#d8ddd2] bg-[#f8faf6]"
+                    : "border-[#d8ddd2]"
+              }`}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1114,7 +1485,78 @@ function FactoriesTab({ gameState, mutateGame }: { gameState: GameState; mutateG
             </div>
           );
         })}
-      </div>
+      </div>}
+      {section === "workforce" && (
+        <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <WorkforcePanel
+            title="Factory Workforce"
+            group={player.employees.factoryWorkers}
+            assigned={assignedWorkers}
+            mutateGame={mutateGame}
+            role="factoryWorkers"
+          />
+          <div className="overflow-x-auto rounded-lg border border-[#d8ddd2]">
+            <table className="w-full min-w-[620px] border-collapse text-sm">
+              <thead className="border-b border-[#d8ddd2] bg-[#f8faf6] text-left text-neutral-600">
+                <tr>
+                  <th className="px-3 py-2">Factory</th>
+                  <th className="px-3 py-2">Country</th>
+                  <th className="px-3 py-2">Workers</th>
+                  <th className="px-3 py-2">Required</th>
+                  <th className="px-3 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {player.factories.map((factory) => {
+                  const required = getFactoryAssignedWorkers(factory);
+                  return (
+                    <tr key={factory.id} className="border-b border-[#edf0ea]">
+                      <td className="px-3 py-3 font-semibold">{factory.name}</td>
+                      <td className="px-3 py-3">{formatFactoryLocation(factory)}</td>
+                      <td className="px-3 py-3">{factory.workerCount.toLocaleString()}</td>
+                      <td className="px-3 py-3">{required.toLocaleString()}</td>
+                      <td className="px-3 py-3">{factory.workerCount >= required ? "Covered" : "Shortage"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {section === "deliveries" && (
+        <div className="mt-4 overflow-x-auto rounded-lg border border-[#d8ddd2]">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead className="border-b border-[#d8ddd2] bg-[#f8faf6] text-left text-neutral-600">
+              <tr>
+                <th className="px-3 py-2">Order</th>
+                <th className="px-3 py-2">Airline</th>
+                <th className="px-3 py-2">Aircraft</th>
+                <th className="px-3 py-2">Remaining</th>
+                <th className="px-3 py-2">Delivery starts</th>
+                <th className="px-3 py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.values(gameState.orders)
+                .filter((order) => order.manufacturerId === player.id)
+                .map((order) => {
+                  const model = player.aircraftModels.find((candidate) => candidate.id === order.modelId);
+                  return (
+                    <tr key={order.id} className="border-b border-[#edf0ea]">
+                      <td className="px-3 py-3 font-semibold">{order.id}</td>
+                      <td className="px-3 py-3">{gameState.airlines[order.airlineId]?.name}</td>
+                      <td className="px-3 py-3">{model?.name}</td>
+                      <td className="px-3 py-3">{Math.max(0, order.quantity - order.delivered)}</td>
+                      <td className="px-3 py-3">Turn {order.deliveryStartTurn}</td>
+                      <td className="px-3 py-3">{order.status}</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -1147,13 +1589,52 @@ function factorySupportedCategories(factory: FactoryRecord): string {
   return factory.supportedCategories.map((category) => AIRCRAFT_CATEGORIES[category].label).join(", ");
 }
 
-function OrdersTab({ gameState }: { gameState: GameState }) {
+function OrdersTab({
+  gameState,
+  focusedTarget,
+  navigate
+}: {
+  gameState: GameState;
+  focusedTarget: GameDeepLinkTarget;
+  navigate: (target: GameDeepLinkTarget) => void;
+}) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
+  const [section, setSection] = useState<"book" | "calendar" | "airlines" | "relationships">(
+    focusedTarget.entityType === "deliveryCalendar" ? "calendar" : focusedTarget.entityType === "airline" ? "airlines" : "book"
+  );
   const orders = Object.values(gameState.orders).filter((order) => order.manufacturerId === player.id);
+  useEffect(() => {
+    if (focusedTarget.section !== "orders") {
+      return;
+    }
+    if (focusedTarget.entityType === "deliveryCalendar") {
+      setSection("calendar");
+    } else if (focusedTarget.entityType === "airline") {
+      setSection("airlines");
+    } else if (focusedTarget.entityType === "order") {
+      setSection("book");
+    }
+  }, [focusedTarget]);
+
   return (
     <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-      <h2 className="text-lg font-semibold">Orders</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Orders</h2>
+          <p className="mt-1 text-sm text-neutral-600">Order book, delivery schedule, airlines, and relationship scores.</p>
+        </div>
+        <SubtabBar
+          tabs={[
+            { id: "book", label: "Order Book" },
+            { id: "calendar", label: "Delivery Calendar" },
+            { id: "airlines", label: "Airlines" },
+            { id: "relationships", label: "Relationship Overview" }
+          ]}
+          active={section}
+          setActive={(value) => setSection(value as typeof section)}
+        />
+      </div>
+      {section === "book" && <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead className="border-b border-[#d8ddd2] text-left text-neutral-600">
             <tr>
@@ -1161,7 +1642,10 @@ function OrdersTab({ gameState }: { gameState: GameState }) {
               <th className="py-2 pr-4">Model</th>
               <th className="py-2 pr-4">Quantity</th>
               <th className="py-2 pr-4">Delivered</th>
+              <th className="py-2 pr-4">Remaining</th>
               <th className="py-2 pr-4">Price</th>
+              <th className="py-2 pr-4">Total value</th>
+              <th className="py-2 pr-4">Next delivery</th>
               <th className="py-2 pr-4">Status</th>
             </tr>
           </thead>
@@ -1169,12 +1653,15 @@ function OrdersTab({ gameState }: { gameState: GameState }) {
             {orders.map((order) => {
               const model = player.aircraftModels.find((candidate) => candidate.id === order.modelId);
               return (
-                <tr key={order.id} className="border-b border-[#edf0ea]">
+                <tr key={order.id} className={`border-b border-[#edf0ea] ${focusedTarget.entityId === order.id ? "bg-[#eef8f5]" : ""}`}>
                   <td className="py-3 pr-4">{gameState.airlines[order.airlineId]?.name}</td>
                   <td className="py-3 pr-4">{model?.name}</td>
                   <td className="py-3 pr-4">{order.quantity}</td>
                   <td className="py-3 pr-4">{order.delivered}</td>
+                  <td className="py-3 pr-4">{Math.max(0, order.quantity - order.delivered)}</td>
                   <td className="py-3 pr-4">{formatMoney(order.pricePerAircraft)}</td>
+                  <td className="py-3 pr-4">{formatMoney(order.pricePerAircraft * order.quantity)}</td>
+                  <td className="py-3 pr-4">Turn {order.deliveryStartTurn}</td>
                   <td className="py-3 pr-4">{order.status}</td>
                 </tr>
               );
@@ -1182,38 +1669,102 @@ function OrdersTab({ gameState }: { gameState: GameState }) {
           </tbody>
         </table>
         {orders.length === 0 && <p className="mt-4 text-sm text-neutral-600">No orders yet.</p>}
-      </div>
-    </section>
-  );
-}
-
-function CompetitorsTab({ gameState }: { gameState: GameState }) {
-  const competitors = Object.values(gameState.manufacturers).filter((manufacturer) => !manufacturer.isPlayer);
-  return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-      <h2 className="text-lg font-semibold">Competitors</h2>
-      <div className="mt-4 grid gap-3">
-        {competitors.map((manufacturer) => (
-          <div key={manufacturer.id} className="rounded-lg border border-[#d8ddd2] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">{manufacturer.name}</h3>
-                <p className="mt-1 text-sm text-neutral-600">{manufacturer.strategy.preferredSegments.join(", ").replaceAll("-", " ")}</p>
-              </div>
-              <span className={manufacturer.bankrupt ? "text-sm font-semibold text-red-700" : "text-sm text-neutral-600"}>
-                {manufacturer.bankrupt ? "Bankrupt" : formatMoney(manufacturer.cash)}
-              </span>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-5">
-              <Metric label="Models" value={manufacturer.aircraftModels.length.toString()} />
-              <Metric label="Programs" value={manufacturer.aircraftPrograms.filter((program) => program.status === "active").length.toString()} />
-              <Metric label="Research" value={manufacturer.researchProjects.filter((project) => project.status === "active").length.toString()} />
-              <Metric label="Narrow share" value={`${manufacturer.marketShare["narrow-body"].toFixed(1)}%`} />
-              <Metric label="Reputation" value={manufacturer.reputation.reliability.toString()} />
-            </div>
-          </div>
-        ))}
-      </div>
+      </div>}
+      {section === "calendar" && (
+        <div className="mt-4 grid gap-3">
+          {orders.length === 0 ? (
+            <p className="text-sm text-neutral-600">No deliveries scheduled.</p>
+          ) : (
+            orders
+              .slice()
+              .sort((a, b) => a.deliveryStartTurn - b.deliveryStartTurn)
+              .map((order) => {
+                const model = player.aircraftModels.find((candidate) => candidate.id === order.modelId);
+                return (
+                  <button
+                    key={order.id}
+                    onClick={() => navigate({ section: "orders", entityType: "order", entityId: order.id })}
+                    className="focus-ring rounded-lg border border-[#d8ddd2] p-4 text-left hover:bg-[#f8faf6]"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="font-semibold">Turn {order.deliveryStartTurn}: {model?.name ?? "Aircraft"} for {gameState.airlines[order.airlineId]?.name}</span>
+                      <span className="text-sm text-neutral-600">{Math.max(0, order.quantity - order.delivered)} remaining</span>
+                    </div>
+                  </button>
+                );
+              })
+          )}
+        </div>
+      )}
+      {section === "airlines" && (
+        <div className="mt-4 grid gap-3">
+          {Object.values(gameState.airlines).map((airline) => {
+            const relationship = player.relationships[airline.id]?.score ?? airline.relationshipScore[player.id] ?? 50;
+            const airlineOrders = orders.filter((order) => order.airlineId === airline.id);
+            return (
+              <button
+                key={airline.id}
+                onClick={() => navigate({ section: "orders", entityType: "airline", entityId: airline.id })}
+                className={`focus-ring rounded-lg border p-4 text-left ${
+                  focusedTarget.entityId === airline.id ? "border-[#0f766e] bg-[#eef8f5]" : "border-[#d8ddd2] hover:bg-[#f8faf6]"
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">{airline.name}</h3>
+                    <p className="mt-1 text-sm text-neutral-600">
+                      {airline.country ?? airline.region.replaceAll("-", " ")} · {AIRCRAFT_CATEGORIES[airline.preferredCategory].label}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold">Relationship {relationship}</span>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-5">
+                  <Metric label="Fleet" value={airline.fleetSize.toLocaleString()} />
+                  <Metric label="Financial" value={airline.financialStrength.toString()} />
+                  <Metric label="Price sensitivity" value={airline.priceSensitivity.toString()} />
+                  <Metric label="Orders" value={airlineOrders.length.toString()} />
+                  <Metric label="Delivered" value={airlineOrders.reduce((sum, order) => sum + order.delivered, 0).toString()} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {section === "relationships" && (
+        <div className="mt-4 overflow-x-auto rounded-lg border border-[#d8ddd2]">
+          <table className="w-full min-w-[700px] border-collapse text-sm">
+            <thead className="border-b border-[#d8ddd2] bg-[#f8faf6] text-left text-neutral-600">
+              <tr>
+                <th className="px-3 py-2">Airline</th>
+                <th className="px-3 py-2">Region</th>
+                <th className="px-3 py-2">Score</th>
+                <th className="px-3 py-2">Order potential</th>
+                <th className="px-3 py-2">Exposure</th>
+                <th className="px-3 py-2">Last interaction</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.values(gameState.airlines)
+                .slice()
+                .sort((a, b) => (player.relationships[b.id]?.score ?? 50) - (player.relationships[a.id]?.score ?? 50))
+                .map((airline) => {
+                  const score = player.relationships[airline.id]?.score ?? airline.relationshipScore[player.id] ?? 50;
+                  const airlineOrders = orders.filter((order) => order.airlineId === airline.id);
+                  return (
+                    <tr key={airline.id} className="border-b border-[#edf0ea]">
+                      <td className="px-3 py-3 font-semibold">{airline.name}</td>
+                      <td className="px-3 py-3">{airline.region.replaceAll("-", " ")}</td>
+                      <td className="px-3 py-3">{score}</td>
+                      <td className="px-3 py-3">{airline.preferredCategory.replaceAll("-", " ")}</td>
+                      <td className="px-3 py-3">{airlineOrders.reduce((sum, order) => sum + Math.max(0, order.quantity - order.delivered), 0)}</td>
+                      <td className="px-3 py-3">Turn {airline.lastOrderTurn}</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -1262,13 +1813,32 @@ function FinancesTab({ gameState }: { gameState: GameState }) {
   );
 }
 
-function InboxTab({ gameState, mutateGame }: { gameState: GameState; mutateGame: (mutator: (state: GameState) => GameState, message: string) => void }) {
-  const emails = sortEmails(getGameEmails(gameState));
-  const [filter, setFilter] = useState<GameEmailCategory | "all">("all");
-  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(emails[0]?.id ?? null);
-  const filteredEmails = emails.filter((email) => filter === "all" || email.category === filter);
-  const selectedEmail = filteredEmails.find((email) => email.id === selectedEmailId) ?? filteredEmails[0] ?? null;
-  const unreadCount = emails.filter((email) => !email.read).length;
+function InboxTab({
+  gameState,
+  mutateGame,
+  navigate,
+  focusedTarget
+}: {
+  gameState: GameState;
+  mutateGame: (mutator: (state: GameState) => GameState, message: string) => void;
+  navigate: (target: GameDeepLinkTarget) => void;
+  focusedTarget: GameDeepLinkTarget;
+}) {
+  const emails = getGameEmails(gameState);
+  const [folder, setFolder] = useState<EmailFolder>("inbox");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortMode, setSortMode] = useState<"newest" | "priority" | "deadline" | "sender" | "category">("newest");
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(focusedTarget.entityType === "email" ? focusedTarget.entityId ?? null : null);
+  const visibleEmails = sortEmails(filterEmails(emails, folder, searchTerm), sortMode);
+  const selectedEmail = visibleEmails.find((email) => email.id === selectedEmailId) ?? visibleEmails[0] ?? null;
+  const unreadCount = emails.filter((email) => !email.read && !email.archived).length;
+  const actionCount = emails.filter((email) => email.requiresAction && email.status === "open" && !email.archived).length;
+
+  useEffect(() => {
+    if (focusedTarget.section === "email" && focusedTarget.entityType === "email" && focusedTarget.entityId) {
+      setSelectedEmailId(focusedTarget.entityId);
+    }
+  }, [focusedTarget]);
 
   function openEmail(email: GameEmail) {
     setSelectedEmailId(email.id);
@@ -1277,49 +1847,102 @@ function InboxTab({ gameState, mutateGame }: { gameState: GameState; mutateGame:
     }
   }
 
+  function runAction(email: GameEmail, actionId: string) {
+    const action = email.actions.find((candidate) => candidate.id === actionId);
+    if (!action || action.disabled) {
+      return;
+    }
+    if (action.actionType === "navigate") {
+      const target = emailActionToDeepLink(action);
+      if (target) {
+        navigate(target);
+      }
+      return;
+    }
+    mutateGame((state) => acknowledgePlayerEmail(state, email.id), "Email action resolved.");
+  }
+
   return (
     <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Company Inbox</h2>
-          <p className="mt-1 text-sm text-neutral-600">{unreadCount} unread · {emails.length} total messages</p>
+          <h2 className="text-lg font-semibold">Company Email</h2>
+          <p className="mt-1 text-sm text-neutral-600">{unreadCount} unread · {actionCount} action-required · {emails.length} total messages</p>
         </div>
-        <IconButton
-          title="Mark all emails read"
-          icon={MailCheck}
-          label="Mark Read"
-          onClick={() => mutateGame(markAllPlayerEmailsRead, "Inbox cleared.")}
-        />
+        <div className="flex flex-wrap gap-2">
+          <IconButton
+            title="Mark all emails read"
+            icon={MailCheck}
+            label="Mark Read"
+            onClick={() => mutateGame(markAllPlayerEmailsRead, "Inbox cleared.")}
+          />
+          {selectedEmail && (
+            <IconButton
+              title="Archive email"
+              icon={Archive}
+              label="Archive"
+              onClick={() => mutateGame((state) => archivePlayerEmail(state, selectedEmail.id), "Email archived.")}
+            />
+          )}
+        </div>
       </div>
 
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-        {EMAIL_FILTERS.map((item) => {
-          const active = filter === item.id;
-          const count = item.id === "all" ? emails.length : emails.filter((email) => email.category === item.id).length;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                setFilter(item.id);
-                setSelectedEmailId(null);
-              }}
-              className={`focus-ring inline-flex min-w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition ${
-                active ? "border-[#0f766e] bg-[#0f766e] text-white" : "border-[#d8ddd2] bg-white text-neutral-700 hover:bg-[#eef3ee]"
-              }`}
+      <div className="mt-4 grid gap-4 xl:grid-cols-[230px_380px_1fr]">
+        <aside className="rounded-lg border border-[#d8ddd2] p-3">
+          <label className="block text-sm font-medium">
+            Search
+            <span className="mt-1 flex items-center gap-2 rounded-md border border-[#d8ddd2] px-2">
+              <Search size={15} className="text-neutral-500" />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="focus-ring w-full border-0 bg-transparent py-2 text-sm outline-none"
+                placeholder="Sender, subject, preview"
+              />
+            </span>
+          </label>
+          <label className="mt-3 block text-sm font-medium">
+            Sort
+            <select
+              value={sortMode}
+              onChange={(event) => setSortMode(event.target.value as typeof sortMode)}
+              className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] bg-white px-2 py-2"
             >
-              <span>{item.label}</span>
-              <span className={active ? "text-white/80" : "text-neutral-500"}>{count}</span>
-            </button>
-          );
-        })}
-      </div>
+              <option value="newest">Newest</option>
+              <option value="priority">Priority</option>
+              <option value="deadline">Deadline</option>
+              <option value="sender">Sender</option>
+              <option value="category">Category</option>
+            </select>
+          </label>
+          <div className="mt-4 space-y-1">
+            {EMAIL_FOLDERS.map((item) => {
+              const active = folder === item.id;
+              const count = countFolderEmails(emails, item.id);
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setFolder(item.id);
+                    setSelectedEmailId(null);
+                  }}
+                  className={`focus-ring flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition ${
+                    active ? "bg-[#0f766e] text-white" : "text-neutral-700 hover:bg-[#eef3ee]"
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  <span className={active ? "text-white/80" : "text-neutral-500"}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[380px_1fr]">
-        <div className="max-h-[620px] overflow-y-auto rounded-lg border border-[#d8ddd2]">
-          {filteredEmails.length === 0 ? (
+        <div className="max-h-[680px] overflow-y-auto rounded-lg border border-[#d8ddd2]">
+          {visibleEmails.length === 0 ? (
             <div className="p-4 text-sm text-neutral-600">No messages in this folder.</div>
           ) : (
-            filteredEmails.map((email) => {
+            visibleEmails.map((email) => {
               const selected = selectedEmail?.id === email.id;
               const Icon = email.read ? MailOpen : Mail;
               return (
@@ -1342,6 +1965,7 @@ function InboxTab({ gameState, mutateGame }: { gameState: GameState; mutateGame:
                         <span className={`truncate text-sm ${email.read ? "font-medium text-neutral-700" : "font-semibold text-[#17211c]"}`}>
                           {email.subject}
                         </span>
+                        {email.requiresAction && email.status === "open" && <AlertTriangle size={14} className="text-amber-600" />}
                       </div>
                       <p className="mt-1 line-clamp-2 text-sm text-neutral-600">{email.preview}</p>
                     </div>
@@ -1366,6 +1990,9 @@ function InboxTab({ gameState, mutateGame }: { gameState: GameState; mutateGame:
                     <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-neutral-600">
                       {emailCategoryLabel(selectedEmail.category)}
                     </span>
+                    <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-neutral-600">
+                      {selectedEmail.status}
+                    </span>
                   </div>
                   <h3 className="mt-3 text-xl font-semibold tracking-normal">{selectedEmail.subject}</h3>
                   <p className="mt-2 text-sm text-neutral-600">
@@ -1386,10 +2013,35 @@ function InboxTab({ gameState, mutateGame }: { gameState: GameState; mutateGame:
                   <p key={`${selectedEmail.id}-${index}`}>{paragraph}</p>
                 ))}
               </div>
+              {selectedEmail.actions.length > 0 && (
+                <div className="mt-6 flex flex-wrap gap-2 border-t border-[#d8ddd2] pt-4">
+                  {selectedEmail.actions.map((action) => (
+                    <button
+                      key={action.id}
+                      disabled={action.disabled}
+                      onClick={() => runAction(selectedEmail, action.id)}
+                      className="focus-ring inline-flex h-10 items-center gap-2 rounded-md bg-[#0f766e] px-3 text-sm font-medium text-white transition hover:bg-[#0b5f59] disabled:cursor-not-allowed disabled:bg-neutral-300"
+                      title={action.consequencePreview}
+                    >
+                      <FileText size={16} />
+                      {action.label}
+                    </button>
+                  ))}
+                  {selectedEmail.requiresAction && selectedEmail.status === "open" && (
+                    <button
+                      onClick={() => mutateGame((state) => acknowledgePlayerEmail(state, selectedEmail.id), "Email acknowledged.")}
+                      className="focus-ring inline-flex h-10 items-center gap-2 rounded-md border border-[#d8ddd2] bg-white px-3 text-sm font-medium text-neutral-700 transition hover:bg-[#eef3ee]"
+                    >
+                      <Check size={16} />
+                      Acknowledge
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 <Metric label="Turn" value={selectedEmail.turn.toString()} />
                 <Metric label="Priority" value={emailPriorityLabel(selectedEmail.priority)} />
-                <Metric label="Status" value={selectedEmail.read ? "Read" : "Unread"} />
+                <Metric label="Status" value={selectedEmail.read ? selectedEmail.status : "Unread"} />
               </div>
             </div>
           )}
@@ -1399,46 +2051,100 @@ function InboxTab({ gameState, mutateGame }: { gameState: GameState; mutateGame:
   );
 }
 
-function sortEmails(emails: GameEmail[]): GameEmail[] {
+function filterEmails(emails: GameEmail[], folder: EmailFolder, searchTerm: string): GameEmail[] {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  return emails
+    .filter((email) => {
+      if (folder === "archived") {
+        return email.archived;
+      }
+      if (email.archived) {
+        return false;
+      }
+      if (folder === "action-required") {
+        return email.requiresAction && email.status === "open";
+      }
+      if (folder === "unread") {
+        return !email.read;
+      }
+      const folderDefinition = EMAIL_FOLDERS.find((candidate) => candidate.id === folder);
+      return folder === "inbox" || !folderDefinition?.category || email.category === folderDefinition.category;
+    })
+    .filter((email) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+      return `${email.from} ${email.subject} ${email.preview} ${email.body.join(" ")}`.toLowerCase().includes(normalizedSearch);
+    });
+}
+
+function countFolderEmails(emails: GameEmail[], folder: EmailFolder): number {
+  return filterEmails(emails, folder, "").length;
+}
+
+function sortEmails(emails: GameEmail[], mode: "newest" | "priority" | "deadline" | "sender" | "category" = "newest"): GameEmail[] {
   const priorityRank: Record<GameEmailPriority, number> = {
     urgent: 4,
-    high: 3,
+    important: 3,
     normal: 2,
-    low: 1
+    informational: 1
   };
-  return [...emails].sort((a, b) => b.turn - a.turn || priorityRank[b.priority] - priorityRank[a.priority] || b.id.localeCompare(a.id));
+  return [...emails].sort((a, b) => {
+    if (mode === "priority") {
+      return priorityRank[b.priority] - priorityRank[a.priority] || b.turn - a.turn;
+    }
+    if (mode === "deadline") {
+      return (a.deadlineTurn ?? Number.MAX_SAFE_INTEGER) - (b.deadlineTurn ?? Number.MAX_SAFE_INTEGER) || b.turn - a.turn;
+    }
+    if (mode === "sender") {
+      return a.from.localeCompare(b.from) || b.turn - a.turn;
+    }
+    if (mode === "category") {
+      return emailCategoryLabel(a.category).localeCompare(emailCategoryLabel(b.category)) || b.turn - a.turn;
+    }
+    return b.turn - a.turn || priorityRank[b.priority] - priorityRank[a.priority] || b.id.localeCompare(a.id);
+  });
 }
 
 function emailCategoryLabel(category: GameEmailCategory): string {
-  if (category === "airline") {
-    return "Airline";
+  if (category === "airline-relations") {
+    return "Airline Relations";
   }
-  if (category === "competitor") {
+  if (category === "competitors") {
+    return "Competitors";
+  }
+  if (category === "market-intelligence") {
     return "Market Intel";
   }
-  if (category === "development") {
-    return "Program";
+  if (category === "board") {
+    return "Board";
   }
-  return `${category[0]?.toUpperCase() ?? ""}${category.slice(1)}`;
+  if (category === "engineering") {
+    return "Engineering";
+  }
+  if (category === "manufacturing") {
+    return "Manufacturing";
+  }
+  return `${category[0]?.toUpperCase() ?? ""}${category.slice(1).replaceAll("-", " ")}`;
 }
 
 function emailCategoryDot(category: GameEmailCategory): string {
   if (category === "research") {
     return "bg-sky-500";
   }
-  if (category === "development") {
+  if (category === "engineering") {
     return "bg-violet-500";
   }
-  if (category === "airline") {
+  if (category === "airline-relations" || category === "orders") {
     return "bg-emerald-500";
   }
-  if (category === "market") {
+  if (category === "market-intelligence") {
     return "bg-amber-500";
   }
   if (category === "finance") {
     return "bg-red-500";
   }
-  if (category === "competitor") {
+  if (category === "competitors") {
     return "bg-stone-500";
   }
   return "bg-[#0f766e]";
@@ -1448,11 +2154,11 @@ function emailPriorityLabel(priority: GameEmailPriority): string {
   if (priority === "urgent") {
     return "Urgent";
   }
-  if (priority === "high") {
-    return "High";
+  if (priority === "important") {
+    return "Important";
   }
-  if (priority === "low") {
-    return "Low";
+  if (priority === "informational") {
+    return "Informational";
   }
   return "Normal";
 }
@@ -1461,51 +2167,74 @@ function emailPriorityClass(priority: GameEmailPriority): string {
   if (priority === "urgent") {
     return "bg-red-100 text-red-800";
   }
-  if (priority === "high") {
+  if (priority === "important") {
     return "bg-amber-100 text-amber-900";
   }
-  if (priority === "low") {
+  if (priority === "informational") {
     return "bg-neutral-200 text-neutral-700";
   }
   return "bg-emerald-100 text-emerald-800";
 }
 
-function SavesTab({
-  saveSlots,
-  loadSlot,
-  deleteSlot,
-  manualSave
+function SubtabBar({
+  tabs,
+  active,
+  setActive
 }: {
-  saveSlots: SaveSlotSummary[];
-  loadSlot: (slotId: string) => void;
-  deleteSlot: (slotId: string) => void;
-  manualSave: () => void;
+  tabs: { id: string; label: string }[];
+  active: string;
+  setActive: (value: string) => void;
 }) {
   return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">Saves</h2>
-        <IconButton title="Manual save" icon={Save} label="Save" onClick={manualSave} primary />
+    <div className="flex max-w-full gap-1 overflow-x-auto rounded-md border border-[#d8ddd2] bg-[#f8faf6] p-1">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => setActive(tab.id)}
+          className={`focus-ring min-w-fit rounded px-3 py-1.5 text-sm font-medium transition ${
+            active === tab.id ? "bg-[#0f766e] text-white" : "text-neutral-700 hover:bg-white"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WorkforcePanel({
+  title,
+  group,
+  assigned,
+  mutateGame,
+  role
+}: {
+  title: string;
+  group: GameState["manufacturers"][string]["employees"][keyof GameState["manufacturers"][string]["employees"]];
+  assigned: number;
+  mutateGame: (mutator: (state: GameState) => GameState, message: string) => void;
+  role: keyof GameState["manufacturers"][string]["employees"];
+}) {
+  const idle = Math.max(0, group.headcount - assigned);
+  return (
+    <div className="rounded-lg border border-[#d8ddd2] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">{title}</h3>
+          <p className="mt-1 text-sm text-neutral-600">{group.headcount.toLocaleString()} employed · {idle.toLocaleString()} idle</p>
+        </div>
+        <div className="flex gap-2">
+          <IconButton title="Hire 25" icon={Plus} label="25" onClick={() => mutateGame((state) => changeEmployeeHeadcount(state, role, 25), "Hiring complete.")} />
+          <IconButton title="Release 25" icon={Trash2} label="25" danger onClick={() => mutateGame((state) => changeEmployeeHeadcount(state, role, -25), "Headcount reduced.")} />
+        </div>
       </div>
-      <div className="mt-4 grid gap-3">
-        {saveSlots.length === 0 ? (
-          <p className="text-sm text-neutral-600">No saves yet.</p>
-        ) : (
-          saveSlots.map((slot) => (
-            <div key={slot.slotId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#d8ddd2] p-4">
-              <div>
-                <h3 className="font-semibold">{slot.slotId}</h3>
-                <p className="mt-1 text-sm text-neutral-600">{slot.companyName} · {slot.dateLabel}</p>
-              </div>
-              <div className="flex gap-2">
-                <IconButton title="Load save" icon={Play} label="Load" onClick={() => loadSlot(slot.slotId)} />
-                <IconButton title="Delete save" icon={Trash2} label="Delete" danger onClick={() => deleteSlot(slot.slotId)} />
-              </div>
-            </div>
-          ))
-        )}
+      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+        <Metric label="Assigned" value={assigned.toLocaleString()} />
+        <Metric label="Skill" value={group.skill.toString()} />
+        <Metric label="Morale" value={group.morale.toString()} />
+        <Metric label="Payroll" value={formatMoney(group.headcount * group.averageMonthlySalary)} />
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -1842,14 +2571,4 @@ function createDefaultDesignInputForUnlocked(
 
 function getDefaultPlayerAircraftName(category: AircraftCategory, year: number, mode: GameState["contentSettings"]["namingMode"]): string {
   return getAircraftNameSelection("player", category, year, mode).displayName;
-}
-
-function labelRole(role: string): string {
-  if (role === "factoryWorkers") {
-    return "Factory workers";
-  }
-  if (role === "salesStaff") {
-    return "Sales staff";
-  }
-  return `${role[0]?.toUpperCase() ?? ""}${role.slice(1)}`;
 }

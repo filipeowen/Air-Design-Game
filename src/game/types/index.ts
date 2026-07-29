@@ -43,16 +43,55 @@ export type OrderStatus = "active" | "delivering" | "completed" | "cancelled";
 export type EventType = "fixed-global" | "conditional-historical" | "emergent";
 
 export type GameEmailCategory =
-  | "executive"
+  | "board"
+  | "finance"
   | "research"
-  | "development"
-  | "airline"
-  | "operations"
-  | "market"
-  | "competitor"
-  | "finance";
+  | "engineering"
+  | "manufacturing"
+  | "airline-relations"
+  | "orders"
+  | "market-intelligence"
+  | "competitors"
+  | "government"
+  | "safety"
+  | "general";
 
-export type GameEmailPriority = "low" | "normal" | "high" | "urgent";
+export type GameEmailPriority = "informational" | "normal" | "important" | "urgent";
+
+export type GameEmailStatus = "open" | "resolved" | "expired" | "informational";
+
+export type GameEmailActionType = "navigate" | "decision" | "acknowledge";
+
+export type GameEmailRelatedEntityType =
+  | "research"
+  | "aircraftProgram"
+  | "factory"
+  | "airline"
+  | "order"
+  | "finance"
+  | "competitor"
+  | "event"
+  | "email";
+
+export type SimulationEventSeverity = "info" | "normal" | "important" | "urgent";
+
+export type SimulationEventType =
+  | "monthly-summary"
+  | "research-started"
+  | "research-completed"
+  | "idle-scientists"
+  | "technology-available"
+  | "program-started"
+  | "program-stage-completed"
+  | "program-delay"
+  | "factory-completed"
+  | "factory-understaffed"
+  | "production-started"
+  | "delivery-completed"
+  | "order-received"
+  | "cash-risk"
+  | "competitor-action"
+  | "market-event";
 
 export type TechnologyBranch =
   | "propulsion"
@@ -480,6 +519,8 @@ export interface GameEmail {
   turn: number;
   date: GameDate;
   from: string;
+  fromRole?: string;
+  fromOrganization?: string;
   to: string;
   category: GameEmailCategory;
   priority: GameEmailPriority;
@@ -487,9 +528,40 @@ export interface GameEmail {
   preview: string;
   body: string[];
   read: boolean;
+  archived: boolean;
+  requiresAction: boolean;
+  deadlineTurn?: number;
+  status: GameEmailStatus;
+  actions: GameEmailAction[];
   fromEntityId?: string;
   toEntityId?: string;
+  relatedEntity?: {
+    type: GameEmailRelatedEntityType;
+    id: string;
+  };
   relatedEntityId?: string;
+}
+
+export interface GameEmailAction {
+  id: string;
+  label: string;
+  actionType: GameEmailActionType;
+  targetRoute?: string;
+  targetEntityId?: string;
+  decisionId?: string;
+  consequencePreview?: string;
+  disabled?: boolean;
+}
+
+export interface SimulationEvent {
+  id: string;
+  turn: number;
+  date: GameDate;
+  type: SimulationEventType;
+  severity: SimulationEventSeverity;
+  entityType?: GameEmailRelatedEntityType;
+  entityId?: string;
+  data: Record<string, unknown>;
 }
 
 export interface Manufacturer {
@@ -540,6 +612,7 @@ export interface GameState {
   technologies: Record<string, Technology>;
   orders: Record<string, AircraftOrder>;
   eventHistory: HistoricalEvent[];
+  simulationEvents: SimulationEvent[];
   randomEventHistory: RandomEvent[];
   monthlyHistory: MonthlyTurnReport[];
   emails: GameEmail[];

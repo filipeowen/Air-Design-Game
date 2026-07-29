@@ -33,8 +33,8 @@ export function launchPlayerAircraftProgram(state: GameState, input: AircraftDes
   player.aircraftPrograms.push(program);
   appendGameEmail(next, {
     from: "Program Management Office",
-    category: "development",
-    priority: "high",
+    category: "engineering",
+    priority: "important",
     subject: `Program authorized: ${sanitizedInput.name}`,
     preview: `${sanitizedInput.name} has entered concept design with ${program.assignedEngineers.toLocaleString()} engineers assigned.`,
     body: [
@@ -42,6 +42,19 @@ export function launchPlayerAircraftProgram(state: GameState, input: AircraftDes
       `Initial monthly budget: ${formatMoney(program.monthlyBudget)}. Expected development duration: ${calculated.metrics.developmentDurationMonths} months.`,
       "Program milestones and engineering issues will be sent to this inbox as they occur."
     ],
+    actions: [
+      {
+        id: "review-program",
+        label: "Review program",
+        actionType: "navigate",
+        targetRoute: "/development",
+        targetEntityId: program.id
+      }
+    ],
+    relatedEntity: {
+      type: "aircraftProgram",
+      id: program.id
+    },
     relatedEntityId: program.id
   });
   return next;
@@ -76,6 +89,19 @@ export function startPlayerResearch(
         `Historical availability year: ${technology.historicalYear}. Research requirement: ${technology.researchPointsRequired} RP.`,
         "Completion updates and unlock notifications will arrive through this inbox."
       ],
+      actions: [
+        {
+          id: "view-research",
+          label: "View research project",
+          actionType: "navigate",
+          targetRoute: "/research",
+          targetEntityId: technology.id
+        }
+      ],
+      relatedEntity: {
+        type: "research",
+        id: technology.id
+      },
       relatedEntityId: technology.id
     });
   }
@@ -208,6 +234,27 @@ export function markPlayerEmailRead(state: GameState, emailId: string): GameStat
   return next;
 }
 
+export function acknowledgePlayerEmail(state: GameState, emailId: string): GameState {
+  const next = structuredClone(state);
+  const email = ensureEmailInbox(next).find((candidate) => candidate.id === emailId);
+  if (email) {
+    email.read = true;
+    email.requiresAction = false;
+    email.status = "resolved";
+  }
+  return next;
+}
+
+export function archivePlayerEmail(state: GameState, emailId: string): GameState {
+  const next = structuredClone(state);
+  const email = ensureEmailInbox(next).find((candidate) => candidate.id === emailId);
+  if (email) {
+    email.archived = true;
+    email.read = true;
+  }
+  return next;
+}
+
 export function markAllPlayerEmailsRead(state: GameState): GameState {
   const next = structuredClone(state);
   for (const email of ensureEmailInbox(next)) {
@@ -263,7 +310,7 @@ export function buildPlayerFactory(state: GameState, category: AircraftCategory,
   player.factories.push(factory);
   appendGameEmail(next, {
     from: "Industrial Planning",
-    category: "operations",
+    category: "manufacturing",
     priority: "normal",
     subject: `Factory construction started: ${country}`,
     preview: `${factory.name} will take ${factory.constructionTurnsRemaining} months and cost ${formatMoney(buildCost)} up front.`,
@@ -272,6 +319,19 @@ export function buildPlayerFactory(state: GameState, category: AircraftCategory,
       `Planned size: ${factory.size}. Supported aircraft: ${factory.supportedCategories.map((categoryId) => AIRCRAFT_CATEGORIES[categoryId].label).join(", ")}.`,
       `Construction time: ${factory.constructionTurnsRemaining} months. Up-front capital cost: ${formatMoney(buildCost)}.`
     ],
+    actions: [
+      {
+        id: "review-factory",
+        label: "Review factory network",
+        actionType: "navigate",
+        targetRoute: "/factory",
+        targetEntityId: factory.id
+      }
+    ],
+    relatedEntity: {
+      type: "factory",
+      id: factory.id
+    },
     relatedEntityId: factory.id
   });
   return next;
@@ -296,8 +356,8 @@ export function closePlayerFactory(state: GameState, factoryId: string): GameSta
   }));
   appendGameEmail(next, {
     from: "Industrial Operations",
-    category: "operations",
-    priority: "high",
+    category: "manufacturing",
+    priority: "important",
     subject: `Factory closed: ${factory.name}`,
     preview: `${factory.name} has been closed and its production lines have been idled.`,
     body: [
@@ -305,6 +365,19 @@ export function closePlayerFactory(state: GameState, factoryId: string): GameSta
       "Operating costs and production output from this facility have stopped.",
       "Any displaced production should be reassigned from the Factories tab."
     ],
+    actions: [
+      {
+        id: "review-factory",
+        label: "Review factory",
+        actionType: "navigate",
+        targetRoute: "/factory",
+        targetEntityId: factory.id
+      }
+    ],
+    relatedEntity: {
+      type: "factory",
+      id: factory.id
+    },
     relatedEntityId: factory.id
   });
   return next;
@@ -321,7 +394,7 @@ export function idlePlayerFactoryProduction(state: GameState, factoryId: string)
   factory.idleSpace = getFactoryStatus(factory) === "active" ? factory.capacity : 0;
   appendGameEmail(next, {
     from: "Production Control",
-    category: "operations",
+    category: "manufacturing",
     priority: "normal",
     subject: `Factory idled: ${factory.name}`,
     preview: `${factory.name} has no aircraft assigned to its production floor.`,
@@ -330,6 +403,19 @@ export function idlePlayerFactoryProduction(state: GameState, factoryId: string)
       "Its capacity remains available for a certified compatible aircraft.",
       "No aircraft will be produced from this facility until a model is assigned."
     ],
+    actions: [
+      {
+        id: "review-factory",
+        label: "Review factory",
+        actionType: "navigate",
+        targetRoute: "/factory",
+        targetEntityId: factory.id
+      }
+    ],
+    relatedEntity: {
+      type: "factory",
+      id: factory.id
+    },
     relatedEntityId: factory.id
   });
   return next;
@@ -378,8 +464,8 @@ export function assignPlayerProductionLine(
   factory.idleSpace = Math.max(0, factory.capacity - line.targetMonthlyRate * AIRCRAFT_CATEGORIES[model.category].factoryCapacityRequired);
   appendGameEmail(next, {
     from: "Production Control",
-    category: "operations",
-    priority: line.status === "active" ? "normal" : "high",
+    category: "manufacturing",
+    priority: line.status === "active" ? "normal" : "important",
     subject: `Production assignment: ${factory.name}`,
     preview:
       line.status === "active"
@@ -392,6 +478,19 @@ export function assignPlayerProductionLine(
         ? "The line is active and will begin producing against eligible orders."
         : "The line is idle because there are not enough available factory workers."
     ],
+    actions: [
+      {
+        id: "review-production",
+        label: "Review production line",
+        actionType: "navigate",
+        targetRoute: "/factory",
+        targetEntityId: factory.id
+      }
+    ],
+    relatedEntity: {
+      type: "factory",
+      id: factory.id
+    },
     relatedEntityId: factory.id
   });
   return next;

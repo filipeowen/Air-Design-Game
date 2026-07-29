@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getEffectiveResearchPointsRequired } from "@/game/research/rules";
 import { createResearchProject } from "@/game/research/process";
 import { getGameEmails } from "@/game/email/messages";
-import { markAllPlayerEmailsRead, markPlayerEmailRead } from "@/game/simulation/actions";
+import { acknowledgePlayerEmail, archivePlayerEmail, markAllPlayerEmailsRead, markPlayerEmailRead } from "@/game/simulation/actions";
 import { createNewGame } from "@/game/simulation/createGame";
 import { processMonthlyTurn } from "@/game/simulation/processMonthlyTurn";
 
@@ -11,8 +11,10 @@ describe("email event system", () => {
     const state = createNewGame({ seed: 701 });
     const emails = getGameEmails(state);
 
-    expect(emails.length).toBeGreaterThanOrEqual(3);
-    expect(emails.some((email) => email.category === "executive")).toBe(true);
+    expect(emails.length).toBeGreaterThanOrEqual(5);
+    expect(emails.some((email) => email.category === "board")).toBe(true);
+    expect(emails.some((email) => email.requiresAction)).toBe(true);
+    expect(emails.some((email) => email.actions.length > 0)).toBe(true);
     expect(emails.every((email) => email.read === false)).toBe(true);
   });
 
@@ -48,5 +50,17 @@ describe("email event system", () => {
 
     state = markAllPlayerEmailsRead(state);
     expect(getGameEmails(state).every((email) => email.read)).toBe(true);
+  });
+
+  it("archives and acknowledges structured email actions", () => {
+    let state = createNewGame({ seed: 705 });
+    const actionEmail = getGameEmails(state).find((email) => email.requiresAction)!;
+
+    state = acknowledgePlayerEmail(state, actionEmail.id);
+    expect(getGameEmails(state).find((email) => email.id === actionEmail.id)?.status).toBe("resolved");
+    expect(getGameEmails(state).find((email) => email.id === actionEmail.id)?.requiresAction).toBe(false);
+
+    state = archivePlayerEmail(state, actionEmail.id);
+    expect(getGameEmails(state).find((email) => email.id === actionEmail.id)?.archived).toBe(true);
   });
 });

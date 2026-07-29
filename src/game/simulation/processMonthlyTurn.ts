@@ -7,7 +7,15 @@ import { processFactoryConstruction, processFactoryExpenses, processProduction }
 import { processMarketAndEvents } from "@/game/market/events";
 import { processAirlineOrders, processProgressPayments } from "@/game/orders/airlineDecisions";
 import { processResearch } from "@/game/research/process";
-import type { AircraftCategory, GameContentSettings, GameState, Manufacturer, MonthlyTurnReport, TurnResult } from "@/game/types";
+import type {
+  AircraftCategory,
+  GameContentSettings,
+  GameState,
+  Manufacturer,
+  MonthlyTurnReport,
+  SimulationEvent,
+  TurnResult
+} from "@/game/types";
 import { advanceMonth, formatGameDate } from "@/game/utils/date";
 import { createRandomSource } from "@/game/utils/prng";
 
@@ -115,7 +123,13 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
     warnings
   };
 
-  ensureEmailInbox(next).push(...createTurnEmails(next, report));
+  next.simulationEvents.push(...createSimulationEvents(next, report));
+  if (next.simulationEvents.length > 480) {
+    next.simulationEvents = next.simulationEvents.slice(-480);
+  }
+
+  const turnEmails = createTurnEmails(next, report);
+  ensureEmailInbox(next).push(...turnEmails);
   trimInbox(next);
   next.monthlyHistory.push(report);
   if (next.monthlyHistory.length > 240) {
@@ -123,6 +137,104 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
   }
 
   return { gameState: next, report };
+}
+
+function createSimulationEvents(state: GameState, report: MonthlyTurnReport): SimulationEvent[] {
+  const date = report.date;
+  const player = state.manufacturers[state.playerCompanyId];
+  const events: SimulationEvent[] = [
+    {
+      id: `sim-${report.turn}-monthly-summary`,
+      turn: report.turn,
+      date,
+      type: "monthly-summary",
+      severity: report.warnings.length > 0 ? "important" : "normal",
+      data: {
+        summary: report.summary,
+        warnings: report.warnings.length
+      }
+    }
+  ];
+
+  for (const message of report.researchCompleted) {
+    events.push({
+      id: `sim-${report.turn}-research-${slug(message)}`,
+      turn: report.turn,
+      date,
+      type: "research-completed",
+      severity: "important",
+      entityType: "research",
+      data: { message }
+    });
+  }
+
+  for (const message of report.developmentUpdates) {
+    events.push({
+      id: `sim-${report.turn}-development-${slug(message)}`,
+      turn: report.turn,
+      date,
+      type: message.includes("issue") ? "program-delay" : "program-stage-completed",
+      severity: message.includes("issue") ? "important" : "normal",
+      entityType: "aircraftProgram",
+      data: { message }
+    });
+  }
+
+  for (const message of report.orders) {
+    events.push({
+      id: `sim-${report.turn}-order-${slug(message)}`,
+      turn: report.turn,
+      date,
+      type: "order-received",
+      severity: message.includes(player?.name ?? "") ? "important" : "normal",
+      entityType: "order",
+      data: { message }
+    });
+  }
+
+  for (const warning of report.warnings) {
+    events.push({
+      id: `sim-${report.turn}-warning-${slug(warning)}`,
+      turn: report.turn,
+      date,
+      type: warning.toLowerCase().includes("cash") ? "cash-risk" : "monthly-summary",
+      severity: "urgent",
+      entityType: "finance",
+      data: { warning }
+    });
+  }
+
+  for (const event of report.events) {
+    events.push({
+      id: `sim-${report.turn}-market-${event.id}`,
+      turn: report.turn,
+      date,
+      type: "market-event",
+      severity: event.severity >= 65 ? "important" : "normal",
+      entityType: "event",
+      entityId: event.id,
+      data: {
+        title: event.title,
+        description: event.description
+      }
+    });
+  }
+
+  if (report.competitorActions.length > 0) {
+    events.push({
+      id: `sim-${report.turn}-competitors`,
+      turn: report.turn,
+      date,
+      type: "competitor-action",
+      severity: "normal",
+      entityType: "competitor",
+      data: {
+        actions: report.competitorActions
+      }
+    });
+  }
+
+  return events;
 }
 
 function applyTaxes(manufacturer: Manufacturer, warnings: string[]): void {
@@ -189,4 +301,8 @@ function createSummary(
   const researchText = playerResearchCount > 0 ? `${playerResearchCount} technology completion${playerResearchCount === 1 ? "" : "s"}` : "no completed research";
   const programText = playerDevelopmentCount > 0 ? `${playerDevelopmentCount} program update${playerDevelopmentCount === 1 ? "" : "s"}` : "steady development work";
   return `${date}: ${player?.name ?? "The player company"} recorded ${orderText}, ${deliveryText}, ${researchText}, and ${programText}.`;
+}
+
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "event";
 }

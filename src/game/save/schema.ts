@@ -35,6 +35,7 @@ export function createSaveFile(slotId: string, gameState: GameState): SaveFile {
 export function parseSaveFile(value: string): SaveFile {
   const saveFile = saveFileSchema.parse(JSON.parse(value));
   const settings = ensureContentSettings(saveFile.gameState);
+  ensureSimulationEventHistory(saveFile.gameState);
   ensureIdentityNames(saveFile.gameState, settings);
   ensureEmailInbox(saveFile.gameState);
   return saveFile;
@@ -45,6 +46,11 @@ export function ensureContentSettings(state: GameState): GameContentSettings {
   candidate.contentSettings ??= { ...GAME_CONTENT_SETTINGS };
   candidate.contentSettings.namingMode ??= GAME_CONTENT_SETTINGS.namingMode;
   return candidate.contentSettings;
+}
+
+function ensureSimulationEventHistory(state: GameState): void {
+  const candidate = state as GameState & { simulationEvents?: GameState["simulationEvents"] };
+  candidate.simulationEvents ??= [];
 }
 
 function ensureIdentityNames(state: GameState, settings: GameContentSettings): void {

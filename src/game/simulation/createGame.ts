@@ -76,6 +76,7 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
     technologies,
     orders: {},
     eventHistory: [],
+    simulationEvents: [],
     randomEventHistory: [],
     monthlyHistory: [],
     emails: []
