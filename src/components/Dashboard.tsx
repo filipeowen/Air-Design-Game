@@ -1513,11 +1513,18 @@ function FactoriesTab({
 }) {
   const player = gameState.manufacturers[gameState.playerCompanyId]!;
   const certifiedModels = player.aircraftModels.filter((model) => model.active);
-  const [selectedCountry, setSelectedCountry] = useState("United States");
+  const defaultFactoryCountry = FACTORY_COUNTRIES.some((country) => country.name === player.factories[0]?.country)
+    ? player.factories[0]!.country!
+    : "United States";
+  const [selectedCountry, setSelectedCountry] = useState(defaultFactoryCountry);
   const [section, setSection] = useState<"network" | "production" | "workforce" | "deliveries">("network");
   const assignedWorkers = getAssignedFactoryWorkers(player);
   const totalFactoryWorkers = player.employees.factoryWorkers.headcount;
   const availableWorkers = Math.max(0, totalFactoryWorkers - assignedWorkers);
+
+  useEffect(() => {
+    setSelectedCountry(defaultFactoryCountry);
+  }, [defaultFactoryCountry, player.identityId]);
 
   return (
     <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">

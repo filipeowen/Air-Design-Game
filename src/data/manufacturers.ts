@@ -1,5 +1,6 @@
 import { createEmployeeGroup } from "@/game/employees/defaults";
 import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
+import { resolveFactoryCountry } from "@/data/factoryCountries";
 import { getManufacturerIdentity } from "@/data/identities";
 import type { AircraftCategory, Factory, Manufacturer, ManufacturerStrategy, NamingMode, Region } from "@/game/types";
 
@@ -21,13 +22,21 @@ function strategy(overrides: Partial<ManufacturerStrategy>): ManufacturerStrateg
   };
 }
 
-function factory(id: string, manufacturerId: string, location: Region, size: "small" | "medium" | "large", capacity: number): Factory {
+function factory(
+  id: string,
+  manufacturerId: string,
+  location: Region,
+  size: "small" | "medium" | "large",
+  capacity: number,
+  country?: string
+): Factory {
   const supportedCategories: AircraftCategory[] =
     size === "small"
       ? ["regional-jet"]
       : size === "medium"
         ? ["regional-jet", "narrow-body"]
         : ["regional-jet", "narrow-body", "wide-body"];
+  const factoryCountry = resolveFactoryCountry(country, location);
 
   return {
     id,
@@ -36,8 +45,8 @@ function factory(id: string, manufacturerId: string, location: Region, size: "sm
       .split("-")
       .map((part) => part[0]?.toUpperCase() + part.slice(1))
       .join(" "),
-    location,
-    country: defaultFactoryCountry(location),
+    location: factoryCountry.region,
+    country: factoryCountry.name,
     size,
     capacity,
     workerCount: capacity * 160,
@@ -51,36 +60,16 @@ function factory(id: string, manufacturerId: string, location: Region, size: "sm
   };
 }
 
-function defaultFactoryCountry(location: Region): string {
-  if (location === "europe") {
-    return "France";
-  }
-  if (location === "latin-america") {
-    return "Brazil";
-  }
-  if (location === "asia-pacific") {
-    return "Japan";
-  }
-  if (location === "middle-east") {
-    return "United Arab Emirates";
-  }
-  if (location === "africa") {
-    return "South Africa";
-  }
-  if (location === "soviet-market") {
-    return "Soviet Union";
-  }
-  return "United States";
-}
-
 export function createBaseManufacturer(
   id: string,
   cash: number,
   preferredRegions: Region[],
   strategyOverrides: Partial<ManufacturerStrategy>,
-  mode: NamingMode = GAME_CONTENT_SETTINGS.namingMode
+  mode: NamingMode = GAME_CONTENT_SETTINGS.namingMode,
+  identityId = id
 ): Manufacturer {
-  const identity = getManufacturerIdentity(id, mode);
+  const identity = getManufacturerIdentity(identityId, mode);
+  const homeCountry = resolveFactoryCountry(identity.country, preferredRegions[0] ?? "north-america");
   return {
     id,
     identityId: identity.id,
@@ -94,7 +83,7 @@ export function createBaseManufacturer(
       factoryWorkers: createEmployeeGroup("factoryWorkers", 6_500, 62),
       salesStaff: createEmployeeGroup("salesStaff", 580, 60)
     },
-    factories: [factory(`${id}-works`, id, preferredRegions[0] ?? "north-america", "medium", 14)],
+    factories: [factory(`${id}-works`, id, homeCountry.region, "medium", 14, homeCountry.name)],
     aircraftDesigns: [],
     aircraftPrograms: [],
     aircraftModels: [],

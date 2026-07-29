@@ -29,6 +29,16 @@ describe("factory management", () => {
     expect(completedFactory.idleSpace).toBe(completedFactory.capacity);
   });
 
+  it("defaults new factory construction to the player's home country", () => {
+    let state = createNewGame({ seed: 914, playerManufacturerId: "sunrise-heavy" });
+    state = buildPlayerFactory(state, "narrow-body");
+
+    const buildingFactory = state.manufacturers[state.playerCompanyId]!.factories.at(-1)!;
+
+    expect(buildingFactory.country).toBe("Soviet Union");
+    expect(buildingFactory.location).toBe("soviet-market");
+  });
+
   it("lets the player close a factory and removes its operating cost", () => {
     const state = closePlayerFactory(createNewGame({ seed: 112 }), "player-renton-works");
     const result = processMonthlyTurn(state);

@@ -1,5 +1,5 @@
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
-import { getFactoryRegionForCountry } from "@/data/factoryCountries";
+import { resolveFactoryCountry } from "@/data/factoryCountries";
 import { getAircraftIdentityByDisplayName } from "@/data/identities";
 import { calculateAircraftDesign } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
@@ -278,7 +278,7 @@ export function changeEmployeeHeadcount(state: GameState, role: keyof GameState[
   return next;
 }
 
-export function buildPlayerFactory(state: GameState, category: AircraftCategory, country = "United States"): GameState {
+export function buildPlayerFactory(state: GameState, category: AircraftCategory, country?: string): GameState {
   const next = structuredClone(state);
   const player = next.manufacturers[next.playerCompanyId];
   if (!player) {
@@ -287,12 +287,13 @@ export function buildPlayerFactory(state: GameState, category: AircraftCategory,
 
   const isWideBody = category === "wide-body";
   const capacity = isWideBody ? 12 : 8;
+  const selectedCountry = resolveFactoryCountry(country ?? player.factories[0]?.country, player.strategy.preferredRegions[0]);
   const factory: Factory = {
     id: `factory-player-${next.turn}-${category}-${player.factories.length + 1}`,
     manufacturerId: player.id,
     name: isWideBody ? "High Bay Assembly" : "Expansion Assembly Hall",
-    location: getFactoryRegionForCountry(country),
-    country,
+    location: selectedCountry.region,
+    country: selectedCountry.name,
     size: isWideBody ? "large" : "medium",
     capacity,
     workerCount: 0,
@@ -312,10 +313,10 @@ export function buildPlayerFactory(state: GameState, category: AircraftCategory,
     from: "Industrial Planning",
     category: "manufacturing",
     priority: "normal",
-    subject: `Factory construction started: ${country}`,
+    subject: `Factory construction started: ${selectedCountry.name}`,
     preview: `${factory.name} will take ${factory.constructionTurnsRemaining} months and cost ${formatMoney(buildCost)} up front.`,
     body: [
-      `${factory.name} has entered construction in ${country}.`,
+      `${factory.name} has entered construction in ${selectedCountry.name}.`,
       `Planned size: ${factory.size}. Supported aircraft: ${factory.supportedCategories.map((categoryId) => AIRCRAFT_CATEGORIES[categoryId].label).join(", ")}.`,
       `Construction time: ${factory.constructionTurnsRemaining} months. Up-front capital cost: ${formatMoney(buildCost)}.`
     ],

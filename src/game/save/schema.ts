@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
+import { resolveFactoryCountry } from "@/data/factoryCountries";
 import {
   getAircraftIdentity,
   getAircraftNameSelection,
@@ -70,6 +71,8 @@ function ensureIdentityNames(state: GameState, settings: GameContentSettings): v
       }
     }
 
+    ensureGeneratedFactoryHomeCountry(state, manufacturer.id, identity.id, identity.shortName, identity.country);
+
     const usedNames: string[] = [];
     for (const model of manufacturer.aircraftModels) {
       const existingIdentity = model.identityId ? getAircraftIdentity(model.identityId, settings.namingMode) : undefined;
@@ -108,4 +111,45 @@ function ensureIdentityNames(state: GameState, settings: GameContentSettings): v
     airline.country = identity.country;
     airline.region = identity.region;
   }
+}
+
+function ensureGeneratedFactoryHomeCountry(
+  state: GameState,
+  manufacturerId: string,
+  identityId: string,
+  shortName: string,
+  country: string
+): void {
+  const manufacturer = state.manufacturers[manufacturerId];
+  if (!manufacturer) {
+    return;
+  }
+  const homeCountry = resolveFactoryCountry(country, manufacturer.strategy.preferredRegions[0]);
+
+  for (const factory of manufacturer.factories) {
+    const isPlayerStartingFactory = manufacturer.isPlayer && factory.id === "player-renton-works";
+    const isCompetitorStartingFactory = !manufacturer.isPlayer && factory.id === `${manufacturer.id}-works`;
+    if (!isPlayerStartingFactory && !isCompetitorStartingFactory) {
+      continue;
+    }
+
+    factory.country = homeCountry.name;
+    factory.location = homeCountry.region;
+    if (isPlayerStartingFactory && factory.name === "Lakeview Final Assembly") {
+      factory.name = `${shortName} Final Assembly`;
+    }
+    if (isCompetitorStartingFactory && factory.name === titleFromFactoryId(factory.id)) {
+      factory.name = `${shortName} Works`;
+    }
+    if (manufacturer.isPlayer) {
+      state.settings.playerManufacturerIdentityId = identityId;
+    }
+  }
+}
+
+function titleFromFactoryId(factoryId: string): string {
+  return factoryId
+    .split("-")
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }

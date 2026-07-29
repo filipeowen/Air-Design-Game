@@ -25,6 +25,19 @@ export const FACTORY_COUNTRIES: FactoryCountryOption[] = [
   { name: "South Africa", region: "africa" }
 ];
 
+const COUNTRY_ALIASES: Record<string, string> = {
+  "West Germany": "Germany"
+};
+
 export function getFactoryRegionForCountry(country: string): Region {
   return FACTORY_COUNTRIES.find((option) => option.name === country)?.region ?? "north-america";
+}
+
+export function resolveFactoryCountry(country: string | undefined, fallbackRegion: Region = "north-america"): FactoryCountryOption {
+  const normalizedCountry = country ? (COUNTRY_ALIASES[country] ?? country) : undefined;
+  return (
+    FACTORY_COUNTRIES.find((option) => option.name === normalizedCountry) ??
+    FACTORY_COUNTRIES.find((option) => option.region === fallbackRegion) ??
+    FACTORY_COUNTRIES[0]!
+  );
 }

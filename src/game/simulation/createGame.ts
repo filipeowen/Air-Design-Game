@@ -1,5 +1,6 @@
 import { createStartingAirlines } from "@/data/airlines";
 import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
+import { resolveFactoryCountry } from "@/data/factoryCountries";
 import { getAircraftNameSelection, getDefaultPlayerCompanyName, getManufacturerIdentity } from "@/data/identities";
 import { createBaseManufacturer, createStartingCompetitors } from "@/data/manufacturers";
 import { STARTING_MARKETS } from "@/data/market";
@@ -113,7 +114,7 @@ function createPlayerManufacturer(companyName: string, mode: NamingMode, manufac
       factoryWorkers: createEmployeeGroup("factoryWorkers", 1_300, 58),
       salesStaff: createEmployeeGroup("salesStaff", 120, 55)
     },
-    factories: [createPlayerFactory()],
+    factories: [createPlayerFactory(identity.shortName, identity.country)],
     aircraftDesigns: [],
     aircraftPrograms: [],
     aircraftModels: [],
@@ -133,7 +134,7 @@ function createPlayerManufacturer(companyName: string, mode: NamingMode, manufac
       researchIntensity: 52,
       longTermPlanning: 65,
       preferredSegments: ["regional-jet", "narrow-body"],
-      preferredRegions: ["north-america"]
+      preferredRegions: [resolveFactoryCountry(identity.country).region]
     },
     ambitions: [],
     marketShare: {
@@ -154,7 +155,6 @@ function createPlayerManufacturer(companyName: string, mode: NamingMode, manufac
 }
 
 function createDefaultPlayerIdentityCompetitor(mode: NamingMode): Manufacturer {
-  const identity = getManufacturerIdentity("player", mode);
   const competitor = createBaseManufacturer(
     "boeing",
     10_800_000_000,
@@ -167,20 +167,20 @@ function createDefaultPlayerIdentityCompetitor(mode: NamingMode): Manufacturer {
       productionConservatism: 57,
       preferredSegments: ["narrow-body", "wide-body"]
     },
-    mode
+    mode,
+    "player"
   );
-  competitor.identityId = identity.id;
-  competitor.name = identity.displayName;
   return competitor;
 }
 
-function createPlayerFactory(): Factory {
+function createPlayerFactory(shortName: string, country: string): Factory {
+  const homeCountry = resolveFactoryCountry(country);
   return {
     id: "player-renton-works",
     manufacturerId: "player",
-    name: "Lakeview Final Assembly",
-    location: "north-america",
-    country: "United States",
+    name: `${shortName} Final Assembly`,
+    location: homeCountry.region,
+    country: homeCountry.name,
     size: "medium",
     capacity: 8,
     workerCount: 1_300,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAircraftNameSelection } from "@/data/identities";
+import { getAircraftNameSelection, getManufacturerIdentities, getManufacturerIdentity } from "@/data/identities";
 import { createSaveFile, parseSaveFile } from "@/game/save/schema";
 import { createNewGame } from "@/game/simulation/createGame";
 import type { GameState, SaveFile } from "@/game/types";
@@ -40,6 +40,45 @@ describe("content naming mode", () => {
     expect(state.manufacturers["meridian-aviation"]).toBeUndefined();
     expect(manufacturerNames.filter((name) => name === "Airbus")).toHaveLength(1);
     expect(manufacturerNames).toContain("Boeing");
+  });
+
+  it("starts every selectable manufacturer in its home country", () => {
+    for (const identity of getManufacturerIdentities("real_world")) {
+      const state = createNewGame({ seed: 1980, playerManufacturerId: identity.id });
+      const player = state.manufacturers[state.playerCompanyId]!;
+      const startingFactory = player.factories[0]!;
+
+      expect(player.name).toBe(identity.displayName);
+      expect(startingFactory.country).toBe(identity.country);
+    }
+  });
+
+  it("keeps generated competitor factories in their home countries", () => {
+    const state = createNewGame({ seed: 1981 });
+
+    for (const manufacturer of Object.values(state.manufacturers).filter((candidate) => !candidate.isPlayer)) {
+      const identity = getManufacturerIdentity(manufacturer.identityId ?? manufacturer.id, state.contentSettings.namingMode);
+      const startingFactory = manufacturer.factories[0]!;
+
+      expect(startingFactory.country).toBe(identity.country);
+    }
+  });
+
+  it("repairs old selected-manufacturer saves with the hardcoded United States starting factory", () => {
+    const state = createNewGame({ seed: 1982, playerManufacturerId: "sunrise-heavy" });
+    const player = state.manufacturers[state.playerCompanyId]!;
+    const startingFactory = player.factories[0]!;
+    startingFactory.name = "Lakeview Final Assembly";
+    startingFactory.country = "United States";
+    startingFactory.location = "north-america";
+
+    const loaded = parseSaveFile(JSON.stringify(createSaveFile("bad-factory-country", state))).gameState;
+    const loadedFactory = loaded.manufacturers[loaded.playerCompanyId]!.factories[0]!;
+
+    expect(loaded.manufacturers[loaded.playerCompanyId]?.name).toBe("Tupolev");
+    expect(loadedFactory.name).toBe("Tupolev Final Assembly");
+    expect(loadedFactory.country).toBe("Soviet Union");
+    expect(loadedFactory.location).toBe("soviet-market");
   });
 
   it("keeps historical aircraft names behind their availability year", () => {
