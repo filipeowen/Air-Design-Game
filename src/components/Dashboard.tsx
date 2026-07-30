@@ -33,7 +33,15 @@ import { GAME_CONTENT_SETTINGS } from "@/data/contentSettings";
 import { FACTORY_COUNTRIES } from "@/data/factoryCountries";
 import { getAircraftNameSelection, getManufacturerIdentities } from "@/data/identities";
 import { RESEARCH_ERAS, TECHNOLOGY_BRANCHES } from "@/data/technologies";
-import { calculateAircraftDesign, createDefaultDesignInput } from "@/game/aircraft/design";
+import {
+  buildAircraftDesignInputFromStudio,
+  calculateAircraftPerformance,
+  calculateCabinGeometry,
+  createDefaultAircraftStudioDesign,
+  getAvailableEngineOptions,
+  sanitizeAircraftStudioDesign
+} from "@/game/aircraft/advancedDesign";
+import { HIGH_LIFT_FACTORS, MATERIAL_FACTORS, SYSTEM_FACTORS, WINGTIP_FACTORS } from "@/game/aircraft/designConfig";
 import { getGameEmails } from "@/game/email/messages";
 import { getAssignedFactoryWorkers, getFactoryAssignedWorkers, getFactoryStatus } from "@/game/factories/process";
 import { canResearchTechnology } from "@/game/research/process";
@@ -56,7 +64,6 @@ import {
   launchPlayerAircraftProgram,
   markAllPlayerEmailsRead,
   markPlayerEmailRead,
-  sanitizeAircraftDesignInput,
   startPlayerResearch,
   updatePlayerProgram
 } from "@/game/simulation/actions";
@@ -71,7 +78,14 @@ import {
 } from "@/game/navigation/deepLinks";
 import type {
   AircraftCategory,
-  AircraftDesignInput,
+  AircraftCalculatedPerformance,
+  AircraftDesignStageId,
+  AircraftStudioDesign,
+  AvionicsGeneration,
+  CabinClass,
+  EngineModelId,
+  EnginePosition,
+  FlightControlSystem,
   Factory as FactoryRecord,
   FactoryStatus,
   GameEmail,
@@ -80,6 +94,8 @@ import type {
   GameState,
   ManufacturerIdentity,
   MonthlyFinancialReport,
+  MissionProfile,
+  StructuralMaterialChoice,
   Technology,
   TechnologyBranch
 } from "@/game/types";
@@ -141,6 +157,66 @@ const EMAIL_FOLDERS: { id: EmailFolder; label: string; category?: GameEmailCateg
 
 const DEFAULT_DESIGN_CATEGORY: AircraftCategory = "narrow-body";
 
+const DESIGN_STAGES: { id: AircraftDesignStageId; label: string; description: string }[] = [
+  { id: "brief", label: "Brief", description: "Program identity, category, mission, and timing." },
+  { id: "fuselage", label: "Fuselage", description: "Pressure vessel size, doors, exits, decks, and cargo bay." },
+  { id: "cabin", label: "Cabin", description: "Cabin zones, seat geometry, aisles, and service spaces." },
+  { id: "wing", label: "Wing", description: "Span, area, sweep, high-lift equipment, tips, and wing tanks." },
+  { id: "propulsion", label: "Propulsion", description: "Engine model, count, mounting position, and derate." },
+  { id: "fuel", label: "Fuel & Weight", description: "Tank layout, reserve policy, payload priority, and MTOW target." },
+  { id: "structure", label: "Structure", description: "Materials, interiors, and landing gear construction." },
+  { id: "systems", label: "Systems", description: "Avionics, controls, redundancy, diagnostics, and testing." },
+  { id: "performance", label: "Performance", description: "Calculated range, field performance, weights, and fuel burn." },
+  { id: "commercial", label: "Commercial", description: "Costs, price, break-even volume, appeal, and factory needs." },
+  { id: "final", label: "Review", description: "Validation warnings, blockers, and launch readiness." }
+];
+
+const MISSION_OPTIONS: { value: MissionProfile; label: string }[] = [
+  { value: "balanced", label: "Balanced" },
+  { value: "short-haul", label: "Short-haul" },
+  { value: "medium-haul", label: "Medium-haul" },
+  { value: "long-haul", label: "Long-haul" },
+  { value: "high-capacity", label: "High-capacity" },
+  { value: "low-operating-cost", label: "Low operating cost" },
+  { value: "premium-comfort", label: "Premium comfort" },
+  { value: "small-airport-operations", label: "Small airports" }
+];
+
+const CABIN_LABELS: Record<CabinClass, string> = {
+  economy: "Economy",
+  "premium-economy": "Premium economy",
+  business: "Business",
+  first: "First"
+};
+
+const MATERIAL_LABELS: Record<StructuralMaterialChoice, string> = {
+  "classic-aluminum": "Classic aluminum",
+  "improved-aluminum": "Improved aluminum",
+  "aluminum-lithium": "Aluminum-lithium",
+  "early-composite": "Early composite",
+  "composite-secondary": "Composite secondary",
+  "primary-composite": "Primary composite"
+};
+
+const AVIONICS_LABELS: Record<AvionicsGeneration, string> = {
+  analog: "Analog",
+  "improved-analog": "Improved analog",
+  "digital-i": "Digital I",
+  "integrated-modular": "Integrated modular"
+};
+
+const FLIGHT_CONTROL_LABELS: Record<FlightControlSystem, string> = {
+  mechanical: "Mechanical",
+  "hydraulic-boosted": "Hydraulic boosted",
+  "digital-fly-by-wire": "Digital fly-by-wire"
+};
+
+const ENGINE_POSITION_LABELS: Record<EnginePosition, string> = {
+  "under-wing": "Under-wing",
+  "rear-fuselage": "Rear fuselage",
+  "tail-mounted": "Tail mounted"
+};
+
 export function Dashboard() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -148,11 +224,11 @@ export function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("email");
   const [focusedTarget, setFocusedTarget] = useState<GameDeepLinkTarget>({ section: "email" });
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
-  const [designInput, setDesignInput] = useState<AircraftDesignInput>(() =>
-    createDefaultDesignInputForUnlocked(
+  const [designInput, setDesignInput] = useState<AircraftStudioDesign>(() =>
+    createDefaultAircraftStudioDesign(
       DEFAULT_DESIGN_CATEGORY,
       getDefaultPlayerAircraftName(DEFAULT_DESIGN_CATEGORY, 1970, GAME_CONTENT_SETTINGS.namingMode),
-      ["improved-aluminum-alloys"]
+      1974
     )
   );
   const [statusMessage, setStatusMessage] = useState("Ready");
@@ -201,13 +277,13 @@ export function Dashboard() {
     if (!currentPlayer) {
       return;
     }
-    setDesignInput((current) => sanitizeAircraftDesignInput(current, currentPlayer.unlockedTechnologyIds));
+    setDesignInput((current) => sanitizeAircraftStudioDesign(current, currentPlayer.unlockedTechnologyIds, gameState.date.year + 4));
   }, [gameState?.playerCompanyId, gameState ? gameState.manufacturers[gameState.playerCompanyId]?.unlockedTechnologyIds.join("|") : ""]);
 
   const player = gameState ? gameState.manufacturers[gameState.playerCompanyId] : null;
   const lastReport = gameState?.monthlyHistory.at(-1);
   const playerFinancial = lastReport?.financialReports.find((report) => report.manufacturerId === gameState?.playerCompanyId);
-  const designPreview = useMemo(() => calculateAircraftDesign(designInput), [designInput]);
+  const designPreview = useMemo(() => calculateAircraftPerformance(designInput), [designInput]);
   const playerOrders = useMemo(
     () => (gameState && player ? Object.values(gameState.orders).filter((order) => order.manufacturerId === player.id) : []),
     [gameState, player]
@@ -394,8 +470,10 @@ export function Dashboard() {
               focusedTarget={focusedTarget}
               launch={() =>
                 mutateGame(
-                  (state) => launchPlayerAircraftProgram(state, designInput),
-                  `${designInput.name} program launched.`
+                  (state) => launchPlayerAircraftProgram(state, buildAircraftDesignInputFromStudio(designInput, player.unlockedTechnologyIds)),
+                  designPreview.validation.status === "invalid"
+                    ? `${designInput.programName} needs engineering fixes.`
+                    : `${designInput.programName} program launched.`
                 )
               }
             />
@@ -843,46 +921,79 @@ function AircraftTab({
   technologies,
   launch
 }: {
-  designInput: AircraftDesignInput;
-  setDesignInput: (value: AircraftDesignInput) => void;
-  designPreview: ReturnType<typeof calculateAircraftDesign>;
+  designInput: AircraftStudioDesign;
+  setDesignInput: (value: AircraftStudioDesign) => void;
+  designPreview: AircraftCalculatedPerformance;
   unlockedTechnologyIds: string[];
   technologies: GameState["technologies"];
   launch: () => void;
 }) {
-  const unlocked = new Set(unlockedTechnologyIds);
+  const [stage, setStage] = useState<AircraftDesignStageId>("brief");
+  const cabinGeometry = useMemo(() => calculateCabinGeometry(designInput), [designInput]);
   const categoryDefinition = AIRCRAFT_CATEGORIES[designInput.category];
-  const engineOptions = [
-    { value: "low-bypass-turbofan", label: "Early turbofan", requiredTechnologyId: undefined },
-    { value: "high-bypass-turbofan", label: "High-bypass turbofan", requiredTechnologyId: "high-bypass-turbofans" },
-    { value: "advanced-turbofan", label: "Advanced turbofan", requiredTechnologyId: "advanced-turbofans" }
-  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
-  const materialOptions = [
-    { value: "classic-aluminum", label: "Classic aluminum", requiredTechnologyId: undefined },
-    { value: "improved-aluminum", label: "Improved aluminum", requiredTechnologyId: "improved-aluminum-alloys" },
-    { value: "early-composite", label: "Composite structures", requiredTechnologyId: "early-composite-secondary-structures" }
-  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
-  const avionicsOptions = [
-    { value: "analog", label: "Analog avionics", requiredTechnologyId: undefined },
-    { value: "improved-analog", label: "Improved analog", requiredTechnologyId: "improved-avionics" },
-    { value: "digital", label: "Digital avionics", requiredTechnologyId: "digital-avionics-i" }
-  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
-  const landingGearOptions = [
-    { value: "standard", label: "Standard", requiredTechnologyId: undefined },
-    { value: "reinforced", label: "Reinforced", requiredTechnologyId: "damage-tolerant-structural-design" },
-    { value: "short-field", label: "Short-field", requiredTechnologyId: "advanced-high-lift-devices" }
-  ].filter((option) => option.requiredTechnologyId === undefined || unlocked.has(option.requiredTechnologyId));
+  const engineOptions = getAvailableEngineOptions(
+    designInput.category,
+    designInput.propulsion.position,
+    unlockedTechnologyIds,
+    designInput.intendedEntryIntoServiceYear
+  );
+  const materialOptions = (Object.keys(MATERIAL_LABELS) as StructuralMaterialChoice[]).filter(
+    (material) => !MATERIAL_FACTORS[material].requiredTechnologyId || unlockedTechnologyIds.includes(MATERIAL_FACTORS[material].requiredTechnologyId)
+  );
+  const highLiftOptions = (Object.keys(HIGH_LIFT_FACTORS) as AircraftStudioDesign["wing"]["highLiftSystem"][]).filter(
+    (system) => !HIGH_LIFT_FACTORS[system].requiredTechnologyId || unlockedTechnologyIds.includes(HIGH_LIFT_FACTORS[system].requiredTechnologyId)
+  );
+  const wingtipOptions = (Object.keys(WINGTIP_FACTORS) as AircraftStudioDesign["wing"]["wingtipDevice"][]).filter(
+    (device) => !WINGTIP_FACTORS[device].requiredTechnologyId || unlockedTechnologyIds.includes(WINGTIP_FACTORS[device].requiredTechnologyId)
+  );
+  const avionicsOptions = (Object.keys(AVIONICS_LABELS) as AvionicsGeneration[]).filter(
+    (avionics) => !SYSTEM_FACTORS.avionics[avionics].requiredTechnologyId || unlockedTechnologyIds.includes(SYSTEM_FACTORS.avionics[avionics].requiredTechnologyId)
+  );
   const unlockedDesignTechnologies = unlockedTechnologyIds
     .map((technologyId) => technologies[technologyId])
     .filter((technology): technology is NonNullable<typeof technology> => Boolean(technology))
     .filter((technology) => ["propulsion", "aerodynamics", "structures", "avionics", "manufacturing", "safety", "cabin-operations"].includes(technology.branch));
+  const invalid = designPreview.validation.status === "invalid";
 
-  function update<K extends keyof AircraftDesignInput>(key: K, value: AircraftDesignInput[K]) {
-    setDesignInput(sanitizeAircraftDesignInput({ ...designInput, [key]: value }, unlockedTechnologyIds));
+  function commit(next: AircraftStudioDesign) {
+    setDesignInput(sanitizeAircraftStudioDesign(next, unlockedTechnologyIds, next.intendedEntryIntoServiceYear));
   }
 
-  function updateCapacity(passengerCapacity: number) {
-    setDesignInput(sanitizeAircraftDesignInput(withAirframeScaledToCapacity({ ...designInput, passengerCapacity }), unlockedTechnologyIds));
+  function update<K extends keyof AircraftStudioDesign>(key: K, value: AircraftStudioDesign[K]) {
+    commit({ ...designInput, [key]: value });
+  }
+
+  function updateFuselage<K extends keyof AircraftStudioDesign["fuselage"]>(key: K, value: AircraftStudioDesign["fuselage"][K]) {
+    commit({ ...designInput, fuselage: { ...designInput.fuselage, [key]: value } });
+  }
+
+  function updateCabin<K extends keyof AircraftStudioDesign["cabin"]>(key: K, value: AircraftStudioDesign["cabin"][K]) {
+    commit({ ...designInput, cabin: { ...designInput.cabin, [key]: value } });
+  }
+
+  function updateZone(index: number, changes: Partial<AircraftStudioDesign["cabin"]["zones"][number]>) {
+    const zones = designInput.cabin.zones.map((zone, zoneIndex) => (zoneIndex === index ? { ...zone, ...changes } : zone));
+    updateCabin("zones", zones);
+  }
+
+  function updateWing<K extends keyof AircraftStudioDesign["wing"]>(key: K, value: AircraftStudioDesign["wing"][K]) {
+    commit({ ...designInput, wing: { ...designInput.wing, [key]: value } });
+  }
+
+  function updatePropulsion<K extends keyof AircraftStudioDesign["propulsion"]>(key: K, value: AircraftStudioDesign["propulsion"][K]) {
+    commit({ ...designInput, propulsion: { ...designInput.propulsion, [key]: value } });
+  }
+
+  function updateFuel<K extends keyof AircraftStudioDesign["fuelSystem"]>(key: K, value: AircraftStudioDesign["fuelSystem"][K]) {
+    commit({ ...designInput, fuelSystem: { ...designInput.fuelSystem, [key]: value } });
+  }
+
+  function updateStructure<K extends keyof AircraftStudioDesign["structure"]>(key: K, value: AircraftStudioDesign["structure"][K]) {
+    commit({ ...designInput, structure: { ...designInput.structure, [key]: value } });
+  }
+
+  function updateSystems<K extends keyof AircraftStudioDesign["systems"]>(key: K, value: AircraftStudioDesign["systems"][K]) {
+    commit({ ...designInput, systems: { ...designInput.systems, [key]: value } });
   }
 
   function toggleTechnology(technologyId: string) {
@@ -892,171 +1003,498 @@ function AircraftTab({
     update("technologyPackage", nextPackage);
   }
 
-  return (
-    <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
-      <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Design Studio</h2>
-          <IconButton title="Launch program" onClick={launch} icon={Play} label="Launch" primary />
-        </div>
-        <div className="mt-5 space-y-4">
-          <label className="block text-sm font-medium">
-            Model name
-            <input
-              value={designInput.name}
-              onChange={(event) => update("name", event.target.value)}
-              className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium">
-            Category
-            <select
+  function renderStage() {
+    if (stage === "brief") {
+      return (
+        <div className="space-y-4">
+          <TextInput label="Program name" value={designInput.programName} onChange={(value) => update("programName", value)} />
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextInput label="Family name" value={designInput.familyName} onChange={(value) => update("familyName", value)} />
+            <TextInput label="Designation" value={designInput.designation} onChange={(value) => update("designation", value)} />
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <SelectControl
+              label="Aircraft category"
               value={designInput.category}
-              onChange={(event) => {
-                const category = event.target.value as AircraftCategory;
-                setDesignInput(createDefaultDesignInputForUnlocked(category, designInput.name, unlockedTechnologyIds));
+              options={Object.values(AIRCRAFT_CATEGORIES).map((category) => ({ value: category.id, label: category.label }))}
+              onChange={(value) => {
+                const category = value as AircraftCategory;
+                commit(createDefaultAircraftStudioDesign(category, getDefaultPlayerAircraftName(category, designInput.intendedEntryIntoServiceYear, GAME_CONTENT_SETTINGS.namingMode), designInput.intendedEntryIntoServiceYear));
               }}
-              className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
-            >
-              {Object.values(AIRCRAFT_CATEGORIES).map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <RangeControl
-            label="Passengers"
-            value={designInput.passengerCapacity}
-            min={categoryDefinition.capacityRange[0]}
-            max={categoryDefinition.capacityRange[1]}
-            step={1}
-            onChange={updateCapacity}
+            />
+            <SelectControl label="Mission" value={designInput.missionProfile} options={MISSION_OPTIONS} onChange={(value) => update("missionProfile", value as MissionProfile)} />
+            <NumberControl
+              label="Entry-into-service year"
+              value={designInput.intendedEntryIntoServiceYear}
+              min={1970}
+              max={2040}
+              step={1}
+              onChange={(value) => update("intendedEntryIntoServiceYear", value)}
+            />
+          </div>
+          <StudioNote
+            title="Design rule"
+            lines={[
+              "Capacity, comfort, range, fuel burn, weight, reliability, cost, and airline appeal are calculated from the physical choices below.",
+              `Normal ${categoryDefinition.label.toLowerCase()} market range: ${categoryDefinition.capacityRange[0]}-${categoryDefinition.capacityRange[1]} seats and ${categoryDefinition.rangeRangeNm[0].toLocaleString()}-${categoryDefinition.rangeRangeNm[1].toLocaleString()} nm.`
+            ]}
           />
-          <RangeControl
-            label="Range nm"
-            value={designInput.rangeNm}
-            min={categoryDefinition.rangeRangeNm[0]}
-            max={categoryDefinition.rangeRangeNm[1]}
-            step={50}
-            onChange={(value) => update("rangeNm", value)}
+        </div>
+      );
+    }
+
+    if (stage === "fuselage") {
+      return (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <NumberControl label="Total length m" value={designInput.fuselage.totalLengthM} min={21} max={78} step={0.1} onChange={(value) => updateFuselage("totalLengthM", value)} />
+          <NumberControl label="Usable cabin length m" value={designInput.fuselage.usableCabinLengthM} min={13} max={60} step={0.1} onChange={(value) => updateFuselage("usableCabinLengthM", value)} />
+          <NumberControl label="External diameter m" value={designInput.fuselage.externalDiameterM} min={2.6} max={7.2} step={0.05} onChange={(value) => updateFuselage("externalDiameterM", value)} />
+          <NumberControl label="Internal cabin width m" value={designInput.fuselage.internalCabinWidthM} min={2.2} max={6.65} step={0.05} onChange={(value) => updateFuselage("internalCabinWidthM", value)} />
+          <NumberControl label="Cargo volume m3" value={designInput.fuselage.cargoVolumeM3} min={3} max={180} step={1} onChange={(value) => updateFuselage("cargoVolumeM3", value)} />
+          <NumberControl label="Door count" value={designInput.fuselage.doorCount} min={2} max={12} step={1} onChange={(value) => updateFuselage("doorCount", value)} />
+          <NumberControl label="Emergency exits" value={designInput.fuselage.exitCount} min={2} max={16} step={1} onChange={(value) => updateFuselage("exitCount", value)} />
+          <SelectControl
+            label="Cargo deck"
+            value={designInput.fuselage.cargoDeckConfiguration}
+            options={[
+              { value: "bulk", label: "Bulk hold" },
+              { value: "standard-containers", label: "Standard containers" },
+              { value: "widebody-containers", label: "Wide-body containers" },
+              { value: "none", label: "None" }
+            ]}
+            onChange={(value) => updateFuselage("cargoDeckConfiguration", value as AircraftStudioDesign["fuselage"]["cargoDeckConfiguration"])}
           />
-          <RangeControl label="Cruise Mach" value={designInput.cruiseSpeedMach} min={0.68} max={0.88} step={0.01} onChange={(value) => update("cruiseSpeedMach", value)} />
-          <RangeControl label="Wing sweep" value={designInput.wingSweepDeg} min={10} max={38} step={1} onChange={(value) => update("wingSweepDeg", value)} />
-          <RangeControl label="Wing area m2" value={designInput.wingAreaM2} min={55} max={380} step={5} onChange={(value) => update("wingAreaM2", value)} />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm font-medium">
-              Engine
-              <select
-                value={designInput.engineType}
-                onChange={(event) => update("engineType", event.target.value as AircraftDesignInput["engineType"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
-              >
-                {engineOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm font-medium">
-              Material
-              <select
-                value={designInput.structuralMaterial}
-                onChange={(event) => update("structuralMaterial", event.target.value as AircraftDesignInput["structuralMaterial"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
-              >
-                {materialOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+        </div>
+      );
+    }
+
+    if (stage === "cabin") {
+      return (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <Metric label="Physical seats" value={cabinGeometry.physicalPassengerCapacity.toLocaleString()} />
+            <Metric label="Certified seats" value={cabinGeometry.maximumCertifiedCapacity.toLocaleString()} />
+            <Metric label="Cabin width used" value={`${cabinGeometry.widestRequiredCabinM} m`} />
+            <Metric label="Cabin density" value={`${cabinGeometry.density}/m`} />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm font-medium">
-              Avionics
-              <select
-                value={designInput.avionicsPackage}
-                onChange={(event) => update("avionicsPackage", event.target.value as AircraftDesignInput["avionicsPackage"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
-              >
-                {avionicsOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm font-medium">
-              Landing gear
-              <select
-                value={designInput.landingGear}
-                onChange={(event) => update("landingGear", event.target.value as AircraftDesignInput["landingGear"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
-              >
-                {landingGearOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="grid gap-3 md:grid-cols-3">
+            <NumberControl label="Aisles" value={designInput.cabin.aisleCount} min={1} max={3} step={1} onChange={(value) => updateCabin("aisleCount", value)} />
+            <NumberControl label="Aisle width m" value={designInput.cabin.aisleWidthM} min={0.38} max={0.68} step={0.01} onChange={(value) => updateCabin("aisleWidthM", value)} />
+            <NumberControl label="Lavatories" value={designInput.cabin.lavatoryCount} min={1} max={14} step={1} onChange={(value) => updateCabin("lavatoryCount", value)} />
+            <NumberControl label="Galleys" value={designInput.cabin.galleyCount} min={1} max={8} step={1} onChange={(value) => updateCabin("galleyCount", value)} />
+            <NumberControl label="Galley area m2" value={designInput.cabin.galleySizeM2} min={1.5} max={18} step={0.1} onChange={(value) => updateCabin("galleySizeM2", value)} />
+            <NumberControl label="Crew rest m2" value={designInput.cabin.crewRestAreaM2} min={0} max={12} step={0.1} onChange={(value) => updateCabin("crewRestAreaM2", value)} />
           </div>
-          <RangeControl label="Reliability target" value={designInput.reliabilityTarget} min={50} max={92} step={1} onChange={(value) => update("reliabilityTarget", value)} />
-          <RangeControl label="Cabin comfort" value={designInput.cabinComfort} min={30} max={90} step={1} onChange={(value) => update("cabinComfort", value)} />
-          <RangeControl label="Commonality" value={designInput.commonality} min={0} max={90} step={1} onChange={(value) => update("commonality", value)} />
-          <div>
-            <h3 className="text-sm font-semibold text-[#d7deea]">Technology package</h3>
-            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-md border border-[#2a3445] p-2">
-              {unlockedDesignTechnologies.length === 0 ? (
-                <p className="px-2 py-1 text-sm text-[#a8b3c4]">No unlocked design technologies.</p>
-              ) : (
-                unlockedDesignTechnologies.map((technology) => (
-                  <label key={technology.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[#202b3d]">
-                    <input
-                      type="checkbox"
-                      checked={designInput.technologyPackage.includes(technology.id)}
-                      onChange={() => toggleTechnology(technology.id)}
-                      className="mt-1 accent-[#f2b84b]"
-                    />
-                    <span>
-                      <span className="block font-medium">{technology.name}</span>
-                      <span className="block text-xs text-[#a8b3c4]">{technology.effects[0]}</span>
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {designInput.cabin.zones.map((zone, index) => (
+              <div key={zone.cabinClass} className="rounded-lg border border-[#2a3445] bg-[#0b111c] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-semibold">{CABIN_LABELS[zone.cabinClass]}</h3>
+                  <span className="text-sm text-[#a8b3c4]">{cabinGeometry.zoneCapacities[zone.cabinClass] ?? 0} seats</span>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <NumberControl label="Zone length m" value={zone.zoneLengthM} min={0} max={42} step={0.1} onChange={(value) => updateZone(index, { zoneLengthM: value })} />
+                  <NumberControl label="Seats across" value={zone.seatsAcross} min={1} max={designInput.category === "wide-body" ? 10 : designInput.category === "narrow-body" ? 6 : 5} step={1} onChange={(value) => updateZone(index, { seatsAcross: value })} />
+                  <NumberControl label="Seat width m" value={zone.seatWidthM} min={0.43} max={0.72} step={0.01} onChange={(value) => updateZone(index, { seatWidthM: value })} />
+                  <NumberControl label="Seat pitch m" value={zone.seatPitchM} min={0.71} max={2.05} step={0.01} onChange={(value) => updateZone(index, { seatPitchM: value })} />
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
+      );
+    }
+
+    if (stage === "wing") {
+      return (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <NumberControl label="Wingspan m" value={designInput.wing.wingspanM} min={21} max={72} step={0.1} onChange={(value) => updateWing("wingspanM", value)} />
+          <NumberControl label="Wing area m2" value={designInput.wing.wingAreaM2} min={48} max={410} step={1} onChange={(value) => updateWing("wingAreaM2", value)} />
+          <NumberControl label="Sweep degrees" value={designInput.wing.sweepDeg} min={10} max={38} step={1} onChange={(value) => updateWing("sweepDeg", value)} />
+          <NumberControl label="Thickness ratio" value={designInput.wing.thicknessRatio} min={0.09} max={0.15} step={0.005} onChange={(value) => updateWing("thicknessRatio", value)} />
+          <SelectControl
+            label="High-lift system"
+            value={designInput.wing.highLiftSystem}
+            options={highLiftOptions.map((value) => ({ value, label: value.replaceAll("-", " ") }))}
+            onChange={(value) => updateWing("highLiftSystem", value as AircraftStudioDesign["wing"]["highLiftSystem"])}
+          />
+          <SelectControl
+            label="Wingtip device"
+            value={designInput.wing.wingtipDevice}
+            options={wingtipOptions.map((value) => ({ value, label: value === "none" ? "None" : value.replaceAll("-", " ") }))}
+            onChange={(value) => updateWing("wingtipDevice", value as AircraftStudioDesign["wing"]["wingtipDevice"])}
+          />
+          <NumberControl label="Wing fuel volume m3" value={designInput.wing.wingFuelVolumeM3} min={0} max={185} step={0.5} onChange={(value) => updateWing("wingFuelVolumeM3", value)} />
+          <SelectControl
+            label="Wing mounting"
+            value={designInput.wing.mountingPosition}
+            options={[
+              { value: "low", label: "Low wing" },
+              { value: "mid", label: "Mid wing" },
+              { value: "high", label: "High wing" }
+            ]}
+            onChange={(value) => updateWing("mountingPosition", value as AircraftStudioDesign["wing"]["mountingPosition"])}
+          />
+        </div>
+      );
+    }
+
+    if (stage === "propulsion") {
+      return (
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SelectControl
+              label="Engine position"
+              value={designInput.propulsion.position}
+              options={(Object.keys(ENGINE_POSITION_LABELS) as EnginePosition[]).map((value) => ({ value, label: ENGINE_POSITION_LABELS[value] }))}
+              onChange={(value) => updatePropulsion("position", value as EnginePosition)}
+            />
+            <SelectControl
+              label="Engine model"
+              value={designInput.propulsion.engineModelId}
+              options={engineOptions.map((engine) => ({
+                value: engine.id,
+                label: `${engine.manufacturer} ${engine.family} · ${engine.maxThrustKn} kN · ${engine.availableYear}`
+              }))}
+              onChange={(value) => updatePropulsion("engineModelId", value as EngineModelId)}
+            />
+            <NumberControl label="Engine count" value={designInput.propulsion.engineCount} min={2} max={4} step={1} onChange={(value) => updatePropulsion("engineCount", value)} />
+            <NumberControl label="Thrust derate %" value={designInput.propulsion.thrustDeratePercent} min={0} max={18} step={1} onChange={(value) => updatePropulsion("thrustDeratePercent", value)} />
+            <SelectControl
+              label="Maintenance priority"
+              value={designInput.propulsion.maintenancePriority}
+              options={[
+                { value: "cost", label: "Cost" },
+                { value: "balanced", label: "Balanced" },
+                { value: "reliability", label: "Reliability" }
+              ]}
+              onChange={(value) => updatePropulsion("maintenancePriority", value as AircraftStudioDesign["propulsion"]["maintenancePriority"])}
+            />
+            <NumberControl label="Engine commonality" value={designInput.propulsion.commonalityPreference} min={0} max={100} step={1} onChange={(value) => updatePropulsion("commonalityPreference", value)} />
+          </div>
+          <StudioNote
+            title="Unlocked engines only"
+            lines={[
+              engineOptions.length > 0
+                ? `${engineOptions.length} compatible engine option${engineOptions.length === 1 ? "" : "s"} available for this category, position, year, and research state.`
+                : "No compatible engine is unlocked for this configuration. Change the category, position, or research propulsion technology."
+            ]}
+          />
+        </div>
+      );
+    }
+
+    if (stage === "fuel") {
+      return (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <NumberControl label="Center tank m3" value={designInput.fuelSystem.centerTankVolumeM3} min={0} max={185} step={0.5} onChange={(value) => updateFuel("centerTankVolumeM3", value)} />
+          <NumberControl label="Auxiliary tank m3" value={designInput.fuelSystem.auxiliaryTankVolumeM3} min={0} max={32} step={0.5} onChange={(value) => updateFuel("auxiliaryTankVolumeM3", value)} />
+          <NumberControl label="Reserve policy %" value={designInput.fuelSystem.reservePolicyPercent} min={8} max={28} step={1} onChange={(value) => updateFuel("reservePolicyPercent", value)} />
+          <NumberControl label="MTOW target kg" value={designInput.fuelSystem.mtowTargetKg} min={24_000} max={360_000} step={500} onChange={(value) => updateFuel("mtowTargetKg", value)} />
+          <NumberControl label="Fuel reinforcement" value={designInput.fuelSystem.structuralFuelReinforcement} min={0} max={25} step={1} onChange={(value) => updateFuel("structuralFuelReinforcement", value)} />
+          <SelectControl
+            label="Payload priority"
+            value={designInput.fuelSystem.payloadPriority}
+            options={[
+              { value: "payload", label: "Payload" },
+              { value: "balanced", label: "Balanced" },
+              { value: "range", label: "Range" }
+            ]}
+            onChange={(value) => updateFuel("payloadPriority", value as AircraftStudioDesign["fuelSystem"]["payloadPriority"])}
+          />
+        </div>
+      );
+    }
+
+    if (stage === "structure") {
+      return (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SelectControl label="Fuselage material" value={designInput.structure.fuselageMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("fuselageMaterial", value as StructuralMaterialChoice)} />
+          <SelectControl label="Wing material" value={designInput.structure.wingMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("wingMaterial", value as StructuralMaterialChoice)} />
+          <SelectControl label="Tail material" value={designInput.structure.tailMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("tailMaterial", value as StructuralMaterialChoice)} />
+          <SelectControl label="Control surfaces" value={designInput.structure.controlSurfaceMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("controlSurfaceMaterial", value as StructuralMaterialChoice)} />
+          <SelectControl
+            label="Interior material"
+            value={designInput.structure.interiorMaterial}
+            options={[
+              { value: "standard", label: "Standard" },
+              { value: "lightweight", label: "Lightweight" },
+              { value: "premium", label: "Premium" }
+            ]}
+            onChange={(value) => updateStructure("interiorMaterial", value as AircraftStudioDesign["structure"]["interiorMaterial"])}
+          />
+          <SelectControl
+            label="Landing gear material"
+            value={designInput.structure.landingGearMaterial}
+            options={[
+              { value: "standard-steel", label: "Standard steel" },
+              { value: "reinforced-steel", label: "Reinforced steel" },
+              { value: "advanced-alloy", label: "Advanced alloy" }
+            ]}
+            onChange={(value) => updateStructure("landingGearMaterial", value as AircraftStudioDesign["structure"]["landingGearMaterial"])}
+          />
+        </div>
+      );
+    }
+
+    if (stage === "systems") {
+      return (
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SelectControl label="Avionics" value={designInput.systems.avionics} options={avionicsOptions.map((value) => ({ value, label: AVIONICS_LABELS[value] }))} onChange={(value) => updateSystems("avionics", value as AvionicsGeneration)} />
+            <SelectControl
+              label="Cockpit"
+              value={designInput.systems.cockpit}
+              options={[
+                { value: "three-crew", label: "Three-crew" },
+                { value: "two-crew-analog", label: "Two-crew analog" },
+                { value: "glass-cockpit", label: "Glass cockpit" }
+              ]}
+              onChange={(value) => updateSystems("cockpit", value as AircraftStudioDesign["systems"]["cockpit"])}
+            />
+            <SelectControl
+              label="Flight controls"
+              value={designInput.systems.flightControls}
+              options={(Object.keys(FLIGHT_CONTROL_LABELS) as FlightControlSystem[]).map((value) => ({ value, label: FLIGHT_CONTROL_LABELS[value] }))}
+              onChange={(value) => updateSystems("flightControls", value as FlightControlSystem)}
+            />
+            <SelectControl
+              label="Redundancy"
+              value={designInput.systems.redundancy}
+              options={[
+                { value: "basic", label: "Basic" },
+                { value: "standard", label: "Standard" },
+                { value: "enhanced", label: "Enhanced" },
+                { value: "triple-redundant", label: "Triple redundant" }
+              ]}
+              onChange={(value) => updateSystems("redundancy", value as AircraftStudioDesign["systems"]["redundancy"])}
+            />
+            <SelectControl
+              label="Diagnostics"
+              value={designInput.systems.diagnostics}
+              options={[
+                { value: "manual", label: "Manual" },
+                { value: "fault-isolation", label: "Fault isolation" },
+                { value: "predictive", label: "Predictive" }
+              ]}
+              onChange={(value) => updateSystems("diagnostics", value as AircraftStudioDesign["systems"]["diagnostics"])}
+            />
+            <SelectControl
+              label="Testing intensity"
+              value={designInput.systems.reliabilityTesting}
+              options={[
+                { value: "lean", label: "Lean" },
+                { value: "standard", label: "Standard" },
+                { value: "expanded", label: "Expanded" },
+                { value: "airline-proving", label: "Airline proving" }
+              ]}
+              onChange={(value) => updateSystems("reliabilityTesting", value as AircraftStudioDesign["systems"]["reliabilityTesting"])}
+            />
+            <NumberControl label="Reliability goal" value={designInput.systems.reliabilityGoal} min={50} max={98} step={1} onChange={(value) => updateSystems("reliabilityGoal", value)} />
+            <NumberControl label="Family commonality" value={designInput.commonality} min={0} max={100} step={1} onChange={(value) => update("commonality", value)} />
+          </div>
+          <UnlockedTechnologyPicker technologies={unlockedDesignTechnologies} selectedIds={designInput.technologyPackage} toggleTechnology={toggleTechnology} />
+        </div>
+      );
+    }
+
+    if (stage === "performance") {
+      return (
+        <div className="grid gap-3 md:grid-cols-3">
+          <Metric label="Passengers" value={designPreview.typicalPassengerCapacity.toLocaleString()} />
+          <Metric label="Range" value={`${designPreview.typicalRangeNm.toLocaleString()} nm`} />
+          <Metric label="Ferry range" value={`${designPreview.ferryRangeNm.toLocaleString()} nm`} />
+          <Metric label="OEW" value={`${designPreview.operatingEmptyWeightKg.toLocaleString()} kg`} />
+          <Metric label="MTOW" value={`${designPreview.maximumTakeoffWeightKg.toLocaleString()} kg`} />
+          <Metric label="Fuel capacity" value={`${designPreview.fuelCapacityKg.toLocaleString()} kg`} />
+          <Metric label="Takeoff" value={`${designPreview.takeoffDistanceM.toLocaleString()} m`} />
+          <Metric label="Landing" value={`${designPreview.landingDistanceM.toLocaleString()} m`} />
+          <Metric label="Fuel/seat" value={`${designPreview.fuelBurnPerSeatKg.toLocaleString()} kg`} />
+        </div>
+      );
+    }
+
+    if (stage === "commercial") {
+      return (
+        <div className="grid gap-3 md:grid-cols-3">
+          <Metric label="Development cost" value={formatMoney(designPreview.developmentCost)} />
+          <Metric label="Development time" value={`${designPreview.developmentMonths} mo`} />
+          <Metric label="Unit cost" value={formatMoney(designPreview.unitProductionCost)} />
+          <Metric label="List price" value={formatMoney(designPreview.estimatedSellingPrice)} />
+          <Metric label="Break-even" value={`${designPreview.breakEvenUnits.toLocaleString()} units`} />
+          <Metric label="Factory size" value={designPreview.requiredFactorySize} />
+          <Metric label="Airline appeal" value={designPreview.airlineAppeal.toString()} />
+          <Metric label="Reliability" value={designPreview.predictedReliability.toString()} />
+          <Metric label="Technical risk" value={designPreview.technicalRisk.toString()} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className={`rounded-lg border p-4 ${invalid ? "border-[#7f1d1d] bg-[#2a1014]" : designPreview.validation.status === "warning" ? "border-[#7c5a1e] bg-[#2a1d0b]" : "border-[#2a3445] bg-[#0b111c]"}`}>
+          <h3 className="font-semibold">{invalid ? "Engineering blockers" : designPreview.validation.status === "warning" ? "Launchable with warnings" : "Ready for authorization"}</h3>
+          <p className="mt-1 text-sm text-[#a8b3c4]">
+            {invalid ? "Resolve invalid items before the program can be launched." : `${designInput.programName} can enter concept design.`}
+          </p>
+        </div>
+        <ValidationList items={designPreview.validation.items} />
+        <button
+          onClick={launch}
+          disabled={invalid}
+          className={`focus-ring inline-flex h-11 items-center gap-2 rounded-md px-4 text-sm font-semibold transition ${
+            invalid ? "cursor-not-allowed border border-[#2a3445] bg-[#182233] text-[#748095]" : "bg-[#f2b84b] text-[#16110a] hover:bg-[#d99a2b]"
+          }`}
+        >
+          <Play size={16} />
+          Authorize Program
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_390px]">
+      <section className="rounded-lg border border-[#2a3445] bg-[#0b111c] p-3">
+        <div className="px-2 pb-3">
+          <h2 className="text-sm font-semibold uppercase text-[#a8b3c4]">Design Studio</h2>
+          <p className="mt-1 text-xs leading-5 text-[#748095]">Stage-based aircraft development</p>
+        </div>
+        <div className="space-y-1">
+          {DESIGN_STAGES.map((candidate) => {
+            const active = stage === candidate.id;
+            const stageIssues = designPreview.validation.items.filter((item) => item.stage === candidate.id);
+            return (
+              <button
+                key={candidate.id}
+                onClick={() => setStage(candidate.id)}
+                title={candidate.description}
+                className={`focus-ring flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition ${
+                  active ? "bg-[#f2b84b] text-[#16110a]" : "text-[#d7deea] hover:bg-[#182233]"
+                }`}
+              >
+                <span className="truncate">{candidate.label}</span>
+                {stageIssues.length > 0 && (
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${stageIssues.some((item) => item.level === "invalid") ? "bg-[#f87171]" : "bg-[#f2b84b]"}`} />
+                )}
+              </button>
+            );
+          })}
         </div>
       </section>
 
       <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">{designInput.name}</h2>
-            <p className="mt-1 text-sm text-[#a8b3c4]">{AIRCRAFT_CATEGORIES[designInput.category].label}</p>
+            <h2 className="text-lg font-semibold">{DESIGN_STAGES.find((candidate) => candidate.id === stage)?.label}</h2>
+            <p className="mt-1 text-sm text-[#a8b3c4]">{DESIGN_STAGES.find((candidate) => candidate.id === stage)?.description}</p>
           </div>
-          <AircraftSpecimen input={designInput} />
+          <span
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold uppercase ${
+              invalid ? "bg-[#3b1518] text-[#fecaca]" : designPreview.validation.status === "warning" ? "bg-[#3a2a10] text-[#ffd48a]" : "bg-[#0f2c3d] text-[#7dd3fc]"
+            }`}
+          >
+            {designPreview.validation.status}
+          </span>
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <Metric label="Range" value={`${designPreview.metrics.estimatedRangeNm.toLocaleString()} nm`} />
-          <Metric label="Fuel score" value={designPreview.metrics.fuelEfficiencyScore.toString()} />
-          <Metric label="Reliability" value={designPreview.metrics.estimatedReliability.toString()} />
-          <Metric label="Unit cost" value={formatMoney(designPreview.metrics.unitProductionCost)} />
-          <Metric label="List price" value={formatMoney(designPreview.metrics.expectedSellingPrice)} />
-          <Metric label="Dev duration" value={`${designPreview.metrics.developmentDurationMonths} mo`} />
-          <Metric label="Dev cost" value={formatMoney(designPreview.metrics.developmentCost)} />
-          <Metric label="Airline appeal" value={designPreview.metrics.airlineAppeal.toString()} />
-          <Metric label="Tech risk" value={designPreview.metrics.technologyRisk.toString()} />
-        </div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <TextList title="Tradeoffs" items={designPreview.tradeoffs} empty="Balanced configuration." />
-          <TextList title="Warnings" items={designPreview.warnings} empty="No design warnings." warning />
-        </div>
+        <div className="mt-5">{renderStage()}</div>
       </section>
+
+      <section className="space-y-4">
+        <AircraftStudioVisual design={designInput} performance={designPreview} cabinGeometry={cabinGeometry} />
+        <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">{designInput.programName}</h2>
+              <p className="mt-1 text-sm text-[#a8b3c4]">
+                {AIRCRAFT_CATEGORIES[designInput.category].label} · {designInput.designation}
+              </p>
+            </div>
+            <Plane size={18} className="text-[#f2b84b]" />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Metric label="Seats" value={designPreview.typicalPassengerCapacity.toLocaleString()} />
+            <Metric label="Range" value={`${designPreview.typicalRangeNm.toLocaleString()} nm`} />
+            <Metric label="Comfort" value={designPreview.comfortRating} />
+            <Metric label="Fuel/seat" value={`${designPreview.fuelBurnPerSeatKg} kg`} />
+            <Metric label="Risk" value={designPreview.technicalRisk.toString()} />
+            <Metric label="Appeal" value={designPreview.airlineAppeal.toString()} />
+          </div>
+          <ValidationList items={designPreview.validation.items.slice(0, 4)} compact />
+        </section>
+      </section>
+    </div>
+  );
+}
+
+function UnlockedTechnologyPicker({
+  technologies,
+  selectedIds,
+  toggleTechnology
+}: {
+  technologies: Technology[];
+  selectedIds: string[];
+  toggleTechnology: (technologyId: string) => void;
+}) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-[#d7deea]">Unlocked technology package</h3>
+      <div className="mt-2 max-h-52 space-y-2 overflow-y-auto rounded-md border border-[#2a3445] bg-[#0b111c] p-2">
+        {technologies.length === 0 ? (
+          <p className="px-2 py-1 text-sm text-[#a8b3c4]">No unlocked design technologies.</p>
+        ) : (
+          technologies.map((technology) => (
+            <label key={technology.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[#182233]">
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(technology.id)}
+                onChange={() => toggleTechnology(technology.id)}
+                className="mt-1 accent-[#f2b84b]"
+              />
+              <span>
+                <span className="block font-medium">{technology.name}</span>
+                <span className="block text-xs text-[#a8b3c4]">{technology.effects[0]}</span>
+              </span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StudioNote({ title, lines }: { title: string; lines: string[] }) {
+  return (
+    <div className="rounded-lg border border-[#2a3445] bg-[#0b111c] p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="mt-2 space-y-1 text-sm leading-6 text-[#a8b3c4]">
+        {lines.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ValidationList({ items, compact = false }: { items: AircraftCalculatedPerformance["validation"]["items"]; compact?: boolean }) {
+  if (items.length === 0) {
+    return compact ? null : <p className="text-sm text-[#a8b3c4]">No validation warnings.</p>;
+  }
+
+  return (
+    <div className={`${compact ? "mt-4" : ""} space-y-2`}>
+      {items.map((item) => (
+        <div
+          key={`${item.stage}-${item.title}`}
+          className={`rounded-md border px-3 py-2 text-sm ${
+            item.level === "invalid" ? "border-[#7f1d1d] bg-[#2a1014] text-[#fecaca]" : "border-[#7c5a1e] bg-[#2a1d0b] text-[#ffd48a]"
+          }`}
+        >
+          <div className="font-semibold">{item.title}</div>
+          {!compact && <p className="mt-1 text-[#d7deea]">{item.message}</p>}
+          <p className={`${compact ? "mt-1" : "mt-2"} text-xs text-[#a8b3c4]`}>{item.fix}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1072,9 +1510,9 @@ function DevelopmentTab({
 }: {
   gameState: GameState;
   mutateGame: (mutator: (state: GameState) => GameState, message: string) => void;
-  designInput: AircraftDesignInput;
-  setDesignInput: (value: AircraftDesignInput) => void;
-  designPreview: ReturnType<typeof calculateAircraftDesign>;
+  designInput: AircraftStudioDesign;
+  setDesignInput: (value: AircraftStudioDesign) => void;
+  designPreview: AircraftCalculatedPerformance;
   focusedTarget: GameDeepLinkTarget;
   launch: () => void;
 }) {
@@ -2410,6 +2848,93 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block text-sm font-medium">
+      <span>{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] bg-[#080b11] px-3 py-2 text-[#e8eef8]"
+      />
+    </label>
+  );
+}
+
+function SelectControl({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block text-sm font-medium">
+      <span>{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] bg-[#080b11] px-3 py-2 text-[#e8eef8]"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function NumberControl({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="block text-sm font-medium">
+      <span className="flex items-center justify-between gap-3">
+        <span>{label}</span>
+        <span className="text-[#a8b3c4]">{Number.isInteger(value) ? value.toLocaleString() : value.toFixed(step < 0.01 ? 3 : step < 1 ? 2 : 0)}</span>
+      </span>
+      <div className="mt-2 grid grid-cols-[1fr_84px] gap-2">
+        <input
+          type="range"
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="w-full accent-[#f2b84b]"
+        />
+        <input
+          type="number"
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="focus-ring min-w-0 rounded-md border border-[#2a3445] bg-[#080b11] px-2 py-1 text-right text-sm text-[#e8eef8]"
+        />
+      </div>
+    </label>
+  );
+}
+
 function RangeControl({
   label,
   value,
@@ -2517,228 +3042,268 @@ function AircraftPlanform() {
   );
 }
 
-function AircraftSpecimen({ input }: { input: AircraftDesignInput }) {
-  const length = Math.max(250, Math.min(430, input.fuselageLengthM * 6));
-  const fuselageHeight = Math.max(22, Math.min(42, input.fuselageWidthM * 6.2));
-  const wingAreaScale = Math.max(95, Math.min(245, input.wingAreaM2 * 0.82));
-  const sweep = Math.max(8, Math.min(42, input.wingSweepDeg));
-  const engineCount = Math.max(2, Math.min(4, input.engineCount));
-  const noseX = 58;
+function AircraftStudioVisual({
+  design,
+  performance,
+  cabinGeometry
+}: {
+  design: AircraftStudioDesign;
+  performance: AircraftCalculatedPerformance;
+  cabinGeometry: ReturnType<typeof calculateCabinGeometry>;
+}) {
+  const length = visualClamp(design.fuselage.totalLengthM * 5.2, 178, 350);
+  const fuselageHeight = visualClamp(design.fuselage.externalDiameterM * 5.5, 18, 42);
+  const noseX = 32;
   const tailX = noseX + length;
-  const centerY = 128;
+  const centerY = 104;
   const topY = centerY - fuselageHeight / 2;
   const bottomY = centerY + fuselageHeight / 2;
-  const wingRootX = noseX + length * (input.category === "wide-body" ? 0.42 : 0.45);
-  const wingTipX = Math.min(520, wingRootX + wingAreaScale);
-  const wingDrop = input.category === "wide-body" ? 82 : input.category === "narrow-body" ? 70 : 58;
-  const windowCount = Math.max(5, Math.min(28, Math.round(input.passengerCapacity / (input.category === "wide-body" ? 15 : 9))));
-  const hasWinglets = input.technologyPackage.some((technologyId) =>
-    ["early-wingtip-devices", "advanced-winglets", "raked-wingtips"].includes(technologyId)
-  );
-  const enginePositions = sideEnginePositions(input.category, engineCount, wingRootX, wingTipX, tailX, centerY);
+  const wingRootX = noseX + length * (design.category === "wide-body" ? 0.43 : 0.47);
+  const wingSpan = visualClamp(design.wing.wingspanM * 3.1, 78, 198);
+  const wingTipX = Math.min(388, wingRootX + wingSpan);
+  const wingDrop = visualClamp(design.wing.wingAreaM2 / (design.category === "wide-body" ? 4.2 : 3.1), 34, 78);
+  const windowCount = Math.max(6, Math.min(34, Math.round(performance.typicalPassengerCapacity / (design.category === "wide-body" ? 13 : 8))));
+  const sideEngines = studioSideEnginePositions(design, wingRootX, wingTipX, tailX, centerY);
+  const topEngines = studioTopEnginePositions(design, wingRootX, wingTipX, tailX, 92);
+  const crossSectionSeats = Math.max(1, Math.max(...design.cabin.zones.map((zone) => zone.seatsAcross)));
+  const crossAisles = design.cabin.aisleCount;
+  const cabinWidth = visualClamp(design.fuselage.internalCabinWidthM * 26, 62, 150);
+  const cabinHeight = visualClamp(design.fuselage.externalDiameterM * 23, 72, 160);
+  const seatPositions = layoutSeatPositions(crossSectionSeats, crossAisles, 206, 103, cabinWidth);
 
   return (
-    <div className="flex min-h-72 w-full min-w-64 items-center justify-center rounded-lg border border-[#2a3445] bg-[#0c1320] p-3">
-      <svg width="560" height="280" viewBox="0 0 560 280" role="img" aria-label={`${input.name} aircraft drawing`}>
-        <defs>
-          <linearGradient id="previewSky" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stopColor="#0d1624" />
-            <stop offset="100%" stopColor="#111827" />
-          </linearGradient>
-          <linearGradient id="fuselagePaint" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#d9e4f2" />
-            <stop offset="48%" stopColor="#8ca2b6" />
-            <stop offset="100%" stopColor="#536474" />
-          </linearGradient>
-          <linearGradient id="wingPaint" x1="0" x2="1">
-            <stop offset="0%" stopColor="#273449" />
-            <stop offset="58%" stopColor="#b78531" />
-            <stop offset="100%" stopColor="#f2b84b" />
-          </linearGradient>
-          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
-            <feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#020617" floodOpacity="0.5" />
-          </filter>
-        </defs>
-        <rect x="0" y="0" width="560" height="280" rx="14" fill="url(#previewSky)" />
-        {Array.from({ length: 11 }, (_, index) => (
-          <path key={`grid-h-${index}`} d={`M 26 ${36 + index * 21} H 534`} stroke="#263247" strokeWidth="1" opacity={index % 2 === 0 ? 0.78 : 0.38} />
-        ))}
-        {Array.from({ length: 13 }, (_, index) => (
-          <path key={`grid-v-${index}`} d={`M ${44 + index * 39} 24 V 246`} stroke="#263247" strokeWidth="1" opacity={0.38} />
-        ))}
-        <ellipse cx="285" cy="218" rx={Math.max(145, length * 0.38)} ry="18" fill="#020617" opacity="0.38" />
-        <g filter="url(#softShadow)">
-          <path
-            d={`M ${wingRootX - 24} ${centerY + 9} L ${wingRootX + 38 - sweep} ${centerY + 2} L ${wingTipX} ${centerY + wingDrop} L ${wingTipX - 62} ${centerY + wingDrop + 15} L ${wingRootX - 42} ${centerY + 19} Z`}
-            fill="url(#wingPaint)"
-            stroke="#5f7184"
-            strokeWidth="2"
-          />
-          {hasWinglets && (
-            <>
-              <path d={`M ${wingTipX - 4} ${centerY + wingDrop + 1} l 14 -30`} stroke="#38bdf8" strokeWidth="6" strokeLinecap="round" />
-              <path d={`M ${wingTipX - 54} ${centerY + wingDrop + 13} l 12 -20`} stroke="#a78bfa" strokeWidth="4" strokeLinecap="round" opacity="0.72" />
-            </>
-          )}
-          <path
-            d={`M ${noseX} ${centerY}
-              C ${noseX + 18} ${topY - 17}, ${noseX + 72} ${topY - 18}, ${tailX - 62} ${topY - 7}
-              C ${tailX - 20} ${topY - 3}, ${tailX + 23} ${centerY - 4}, ${tailX + 42} ${centerY}
-              C ${tailX + 19} ${centerY + 18}, ${tailX - 31} ${bottomY + 8}, ${noseX + 30} ${bottomY + 6}
-              C ${noseX + 5} ${bottomY + 5}, ${noseX - 10} ${centerY + 13}, ${noseX} ${centerY} Z`}
-            fill="url(#fuselagePaint)"
-            stroke="#d9e4f2"
-            strokeWidth="2.5"
-          />
-          <path d={`M ${noseX + 18} ${centerY - 3} C ${noseX + 24} ${topY - 7}, ${noseX + 48} ${topY - 8}, ${noseX + 68} ${topY - 4}`} fill="none" stroke="#111827" strokeWidth="2" opacity="0.58" />
-          <path d={`M ${tailX - 56} ${topY + 6} L ${tailX - 18} ${topY - 76} L ${tailX + 5} ${topY + 4} Z`} fill="#38bdf8" stroke="#f2b84b" strokeWidth="2" />
-          <path d={`M ${tailX - 62} ${centerY + 5} L ${tailX + 8} ${centerY - 16} L ${tailX - 16} ${centerY + 13} Z`} fill="#5f7184" stroke="#b7c6d8" strokeWidth="1.5" />
-          <path d={`M ${noseX + 78} ${centerY + 5} H ${tailX - 70}`} stroke="#f2b84b" strokeWidth="6" strokeLinecap="round" />
-          <path d={`M ${noseX + 80} ${centerY + 1} H ${tailX - 72}`} stroke="#ffe2a1" strokeWidth="2" strokeLinecap="round" opacity="0.72" />
-          {Array.from({ length: windowCount }, (_, index) => {
-            const spacing = (length - 132) / Math.max(1, windowCount - 1);
-            return (
-              <rect
-                key={index}
-                x={noseX + 78 + index * spacing}
-                y={topY + 9}
-                width="7"
-                height="5"
-                rx="1.5"
-                fill="#38bdf8"
-                opacity="0.88"
-              />
-            );
-          })}
-          <rect x={noseX + 56} y={topY + 13} width="10" height={fuselageHeight - 11} rx="2" fill="none" stroke="#263247" strokeWidth="1.2" opacity="0.78" />
-          <rect x={tailX - 92} y={topY + 13} width="10" height={fuselageHeight - 13} rx="2" fill="none" stroke="#263247" strokeWidth="1.2" opacity="0.66" />
-          {enginePositions.map((engine, index) => (
-            <g key={index}>
-              <path d={`M ${engine.x - 4} ${engine.y - 22} L ${engine.x - 8} ${engine.y - 8}`} stroke="#536474" strokeWidth="3" strokeLinecap="round" />
-              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx} ry={engine.ry} fill="#b7c6d8" stroke="#f2b84b" strokeWidth="4" />
-              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx - 7} ry={engine.ry - 5} fill="#111827" />
-              <ellipse cx={engine.x - 3} cy={engine.y - 2} rx={Math.max(3, engine.rx - 13)} ry={Math.max(2, engine.ry - 9)} fill="#38bdf8" opacity="0.55" />
-            </g>
+    <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold">Aircraft Preview</h2>
+        <span className="rounded-md bg-[#0b111c] px-2 py-1 text-xs font-semibold text-[#a8b3c4]">{performance.gateCategory}</span>
+      </div>
+      <div className="mt-3 overflow-hidden rounded-lg border border-[#2a3445] bg-[#050913]">
+        <svg viewBox="0 0 420 520" className="h-auto w-full" role="img" aria-label={`${design.programName} engineering preview`}>
+          <defs>
+            <linearGradient id="studioHull" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#f4f7fb" />
+              <stop offset="48%" stopColor="#9fb0c5" />
+              <stop offset="100%" stopColor="#4a5b70" />
+            </linearGradient>
+            <linearGradient id="studioWing" x1="0" x2="1">
+              <stop offset="0%" stopColor="#1b2637" />
+              <stop offset="58%" stopColor="#8c713b" />
+              <stop offset="100%" stopColor="#f2b84b" />
+            </linearGradient>
+            <filter id="studioShadow" x="-20%" y="-20%" width="140%" height="150%">
+              <feDropShadow dx="0" dy="8" stdDeviation="7" floodColor="#020617" floodOpacity="0.58" />
+            </filter>
+          </defs>
+          <rect width="420" height="520" fill="#050913" />
+          {Array.from({ length: 18 }, (_, index) => (
+            <path key={`grid-${index}`} d={`M 18 ${32 + index * 25} H 402`} stroke="#1c2637" strokeWidth="1" opacity={index % 2 === 0 ? 0.58 : 0.28} />
           ))}
-        </g>
-      </svg>
-    </div>
+
+          <g filter="url(#studioShadow)">
+            <path
+              d={`M ${wingRootX - 18} ${centerY + 8} L ${wingRootX + 34 - design.wing.sweepDeg * 0.9} ${centerY + 2} L ${wingTipX} ${centerY + wingDrop} L ${wingTipX - 46} ${centerY + wingDrop + 13} L ${wingRootX - 34} ${centerY + 18} Z`}
+              fill="url(#studioWing)"
+              stroke="#6d7d90"
+              strokeWidth="1.6"
+            />
+            {design.wing.wingtipDevice !== "none" && (
+              <path d={`M ${wingTipX - 2} ${centerY + wingDrop + 1} l 12 -26`} stroke="#38bdf8" strokeWidth="5" strokeLinecap="round" />
+            )}
+            <path
+              d={`M ${noseX} ${centerY}
+                C ${noseX + 15} ${topY - 12}, ${noseX + 62} ${topY - 14}, ${tailX - 48} ${topY - 5}
+                C ${tailX - 17} ${topY - 2}, ${tailX + 20} ${centerY - 4}, ${tailX + 35} ${centerY}
+                C ${tailX + 16} ${centerY + 15}, ${tailX - 28} ${bottomY + 7}, ${noseX + 25} ${bottomY + 5}
+                C ${noseX + 5} ${bottomY + 4}, ${noseX - 7} ${centerY + 11}, ${noseX} ${centerY} Z`}
+              fill="url(#studioHull)"
+              stroke="#e5edf7"
+              strokeWidth="2"
+            />
+            <path d={`M ${tailX - 52} ${topY + 5} L ${tailX - 20} ${topY - 64} L ${tailX + 2} ${topY + 4} Z`} fill="#38bdf8" stroke="#f2b84b" strokeWidth="1.5" />
+            <path d={`M ${noseX + 58} ${centerY + 4} H ${tailX - 58}`} stroke="#f2b84b" strokeWidth="5" strokeLinecap="round" />
+            {Array.from({ length: windowCount }, (_, index) => {
+              const spacing = (length - 112) / Math.max(1, windowCount - 1);
+              return <rect key={index} x={noseX + 62 + index * spacing} y={topY + 7} width="5.5" height="4" rx="1.2" fill="#38bdf8" opacity="0.9" />;
+            })}
+            {sideEngines.map((engine, index) => (
+              <g key={index}>
+                <path d={`M ${engine.x - 3} ${engine.y - 18} L ${engine.x - 7} ${engine.y - 7}`} stroke="#536474" strokeWidth="2.5" strokeLinecap="round" />
+                <ellipse cx={engine.x} cy={engine.y} rx={engine.rx} ry={engine.ry} fill="#c8d2df" stroke="#f2b84b" strokeWidth="3" />
+                <ellipse cx={engine.x} cy={engine.y} rx={engine.rx - 6} ry={engine.ry - 4} fill="#0b111c" />
+              </g>
+            ))}
+          </g>
+
+          <text x="18" y="28" fill="#a8b3c4" fontSize="11" fontWeight="700">SIDE VIEW</text>
+
+          <g transform="translate(0 170)" filter="url(#studioShadow)">
+            <path d={`M ${noseX + 6} 92 C ${noseX + 34} 76, ${tailX - 38} 76, ${tailX + 34} 92 C ${tailX - 38} 108, ${noseX + 34} 108, ${noseX + 6} 92 Z`} fill="#d8e2ee" stroke="#6d7d90" strokeWidth="1.8" />
+            <path d={`M ${wingRootX - 10} 93 L ${wingRootX + 32 - design.wing.sweepDeg * 0.55} 84 L ${Math.min(402, wingRootX + wingSpan * 0.86)} 31 L ${wingTipX - 14} 90 Z`} fill="#253149" stroke="#77889b" strokeWidth="1.4" opacity="0.9" />
+            <path d={`M ${wingRootX - 10} 91 L ${wingRootX + 32 - design.wing.sweepDeg * 0.55} 100 L ${Math.min(402, wingRootX + wingSpan * 0.86)} 153 L ${wingTipX - 14} 94 Z`} fill="#253149" stroke="#77889b" strokeWidth="1.4" opacity="0.9" />
+            <path d={`M ${tailX - 56} 88 L ${tailX + 26} 55 L ${tailX - 12} 93 Z`} fill="#38bdf8" opacity="0.85" />
+            <path d={`M ${tailX - 56} 96 L ${tailX + 26} 129 L ${tailX - 12} 91 Z`} fill="#38bdf8" opacity="0.66" />
+            {topEngines.map((engine, index) => (
+              <ellipse key={index} cx={engine.x} cy={engine.y} rx="8" ry="5" fill="#f2b84b" stroke="#0b111c" strokeWidth="2" />
+            ))}
+          </g>
+          <text x="18" y="197" fill="#a8b3c4" fontSize="11" fontWeight="700">PLANFORM</text>
+
+          <g transform="translate(0 345)">
+            <ellipse cx="206" cy="104" rx={cabinWidth / 2} ry={cabinHeight / 2} fill="#dce7f4" stroke="#6d7d90" strokeWidth="2" />
+            <path d={`M ${206 - cabinWidth / 2 + 10} 104 H ${206 + cabinWidth / 2 - 10}`} stroke="#f2b84b" strokeWidth="3" strokeLinecap="round" />
+            {seatPositions.map((seat, index) => (
+              <rect key={index} x={seat.x - 5} y={seat.y - 6} width="10" height="12" rx="2.5" fill="#1d4ed8" stroke="#dbeafe" strokeWidth="1" />
+            ))}
+            <text x="18" y="22" fill="#a8b3c4" fontSize="11" fontWeight="700">CABIN SECTION</text>
+            <text x="206" y="175" textAnchor="middle" fill="#a8b3c4" fontSize="11">
+              {cabinGeometry.widestRequiredCabinM} m used / {design.fuselage.internalCabinWidthM.toFixed(2)} m available
+            </text>
+          </g>
+
+          <g transform="translate(18 300)">
+            <text x="0" y="-10" fill="#a8b3c4" fontSize="11" fontWeight="700">CABIN LAYOUT</text>
+            <rect x="0" y="0" width="384" height="32" rx="16" fill="#d8e2ee" stroke="#6d7d90" strokeWidth="1.5" />
+            {design.cabin.zones.map((zone, index) => {
+              const start = design.cabin.zones.slice(0, index).reduce((sum, item) => sum + item.zoneLengthM, 0);
+              const x = (start / Math.max(1, cabinGeometry.usedPassengerLengthM)) * 384;
+              const width = (zone.zoneLengthM / Math.max(1, cabinGeometry.usedPassengerLengthM)) * 384;
+              return width > 0 ? (
+                <g key={zone.cabinClass}>
+                  <rect x={x} y="3" width={Math.max(2, width)} height="26" rx="13" fill={cabinZoneColor(zone.cabinClass)} opacity="0.84" />
+                  <text x={x + width / 2} y="22" textAnchor="middle" fill="#050913" fontSize="10" fontWeight="700">
+                    {CABIN_LABELS[zone.cabinClass].slice(0, 3)}
+                  </text>
+                </g>
+              ) : null;
+            })}
+          </g>
+        </svg>
+      </div>
+    </section>
   );
 }
 
-function sideEnginePositions(
-  category: AircraftCategory,
-  engineCount: number,
+function studioSideEnginePositions(
+  design: AircraftStudioDesign,
   wingRootX: number,
   wingTipX: number,
   tailX: number,
   centerY: number
 ): { x: number; y: number; rx: number; ry: number }[] {
-  if (category === "regional-jet" && engineCount === 2) {
+  if (design.propulsion.position !== "under-wing") {
+    if (design.propulsion.engineCount >= 3) {
+      return [
+        { x: tailX - 65, y: centerY + 23, rx: 13, ry: 9 },
+        { x: tailX - 43, y: centerY + 23, rx: 13, ry: 9 },
+        { x: tailX - 35, y: centerY - 2, rx: 11, ry: 8 }
+      ];
+    }
     return [
-      { x: tailX - 72, y: centerY + 26, rx: 15, ry: 11 }
+      { x: tailX - 66, y: centerY + 23, rx: 13, ry: 9 },
+      { x: tailX - 41, y: centerY + 23, rx: 13, ry: 9 }
     ];
   }
 
-  const wingSpan = wingTipX - wingRootX;
-  if (engineCount >= 4) {
+  const span = wingTipX - wingRootX;
+  if (design.propulsion.engineCount >= 4) {
     return [
-      { x: wingRootX + wingSpan * 0.22, y: centerY + 42, rx: 18, ry: 13 },
-      { x: wingRootX + wingSpan * 0.38, y: centerY + 50, rx: 18, ry: 13 },
-      { x: wingRootX + wingSpan * 0.58, y: centerY + 50, rx: 18, ry: 13 },
-      { x: wingRootX + wingSpan * 0.74, y: centerY + 42, rx: 18, ry: 13 }
+      { x: wingRootX + span * 0.18, y: centerY + 34, rx: 14, ry: 10 },
+      { x: wingRootX + span * 0.35, y: centerY + 42, rx: 14, ry: 10 },
+      { x: wingRootX + span * 0.57, y: centerY + 42, rx: 14, ry: 10 },
+      { x: wingRootX + span * 0.74, y: centerY + 34, rx: 14, ry: 10 }
     ];
   }
-
-  if (engineCount === 3) {
+  if (design.propulsion.engineCount === 3) {
     return [
-      { x: wingRootX + wingSpan * 0.34, y: centerY + 46, rx: 19, ry: 14 },
-      { x: wingRootX + wingSpan * 0.62, y: centerY + 46, rx: 19, ry: 14 },
-      { x: tailX - 58, y: centerY + 8, rx: 14, ry: 10 }
+      { x: wingRootX + span * 0.33, y: centerY + 39, rx: 15, ry: 11 },
+      { x: wingRootX + span * 0.62, y: centerY + 39, rx: 15, ry: 11 },
+      { x: tailX - 48, y: centerY + 2, rx: 12, ry: 8 }
     ];
   }
-
   return [
-    { x: wingRootX + wingSpan * 0.36, y: centerY + 46, rx: 19, ry: 14 },
-    { x: wingRootX + wingSpan * 0.64, y: centerY + 46, rx: 19, ry: 14 }
+    { x: wingRootX + span * 0.35, y: centerY + 39, rx: 15, ry: 11 },
+    { x: wingRootX + span * 0.63, y: centerY + 39, rx: 15, ry: 11 }
   ];
 }
 
-function withAirframeScaledToCapacity(input: AircraftDesignInput): AircraftDesignInput {
-  const category = AIRCRAFT_CATEGORIES[input.category];
-  const ratio = (input.passengerCapacity - category.capacityRange[0]) / (category.capacityRange[1] - category.capacityRange[0]);
-  const envelope = visualAirframeEnvelope(input.category);
-  return {
-    ...input,
-    fuselageLengthM: roundOne(lerp(envelope.fuselageLength[0], envelope.fuselageLength[1], ratio)),
-    fuselageWidthM: roundOne(lerp(envelope.fuselageWidth[0], envelope.fuselageWidth[1], ratio)),
-    wingAreaM2: Math.round(lerp(envelope.wingArea[0], envelope.wingArea[1], ratio))
-  };
-}
-
-function visualAirframeEnvelope(category: AircraftCategory): {
-  fuselageLength: [number, number];
-  fuselageWidth: [number, number];
-  wingArea: [number, number];
-} {
-  if (category === "regional-jet") {
-    return {
-      fuselageLength: [21, 33],
-      fuselageWidth: [2.5, 3.4],
-      wingArea: [52, 92]
-    };
+function studioTopEnginePositions(
+  design: AircraftStudioDesign,
+  wingRootX: number,
+  wingTipX: number,
+  tailX: number,
+  centerY: number
+): { x: number; y: number }[] {
+  if (design.propulsion.position !== "under-wing") {
+    return design.propulsion.engineCount >= 3
+      ? [
+          { x: tailX - 56, y: centerY - 17 },
+          { x: tailX - 56, y: centerY + 17 },
+          { x: tailX - 30, y: centerY }
+        ]
+      : [
+          { x: tailX - 56, y: centerY - 17 },
+          { x: tailX - 56, y: centerY + 17 }
+        ];
   }
 
-  if (category === "narrow-body") {
-    return {
-      fuselageLength: [31, 47],
-      fuselageWidth: [3.3, 4.2],
-      wingArea: [95, 165]
-    };
+  const span = wingTipX - wingRootX;
+  if (design.propulsion.engineCount >= 4) {
+    return [
+      { x: wingRootX + span * 0.28, y: centerY - 27 },
+      { x: wingRootX + span * 0.48, y: centerY - 42 },
+      { x: wingRootX + span * 0.48, y: centerY + 42 },
+      { x: wingRootX + span * 0.28, y: centerY + 27 }
+    ];
   }
-
-  return {
-    fuselageLength: [48, 76],
-    fuselageWidth: [5, 6.8],
-    wingArea: [245, 390]
-  };
+  return [
+    { x: wingRootX + span * 0.42, y: centerY - 34 },
+    { x: wingRootX + span * 0.42, y: centerY + 34 }
+  ];
 }
 
-function lerp(min: number, max: number, ratio: number): number {
-  return min + (max - min) * Math.max(0, Math.min(1, ratio));
+function layoutSeatPositions(seatsAcross: number, aisles: number, centerX: number, centerY: number, cabinWidth: number): { x: number; y: number }[] {
+  const positions: { x: number; y: number }[] = [];
+  const groups = aisles >= 2 ? [Math.ceil(seatsAcross / 3), Math.max(1, Math.floor(seatsAcross / 3)), seatsAcross - Math.ceil(seatsAcross / 3) - Math.max(1, Math.floor(seatsAcross / 3))] : [Math.ceil(seatsAcross / 2), seatsAcross - Math.ceil(seatsAcross / 2)];
+  const seatStep = Math.min(15, cabinWidth / Math.max(4, seatsAcross + aisles * 1.6));
+  let x = centerX - ((seatsAcross + aisles * 1.25 - 1) * seatStep) / 2;
+  for (const group of groups.filter((value) => value > 0)) {
+    for (let index = 0; index < group; index += 1) {
+      positions.push({ x, y: centerY });
+      x += seatStep;
+    }
+    x += seatStep * 1.25;
+  }
+  return positions;
 }
 
-function roundOne(value: number): number {
-  return Math.round(value * 10) / 10;
+function cabinZoneColor(cabinClass: CabinClass): string {
+  if (cabinClass === "first") {
+    return "#f2b84b";
+  }
+  if (cabinClass === "business") {
+    return "#a78bfa";
+  }
+  if (cabinClass === "premium-economy") {
+    return "#38bdf8";
+  }
+  return "#86efac";
 }
 
-function createDefaultDesignInputForUnlocked(
-  category: AircraftCategory,
-  name: string,
-  unlockedTechnologyIds: string[]
-): AircraftDesignInput {
-  const base = createDefaultDesignInput(category, name);
-  return sanitizeAircraftDesignInput(
-    {
-      ...base,
-      structuralMaterial: unlockedTechnologyIds.includes("improved-aluminum-alloys") ? "improved-aluminum" : "classic-aluminum",
-      engineType: unlockedTechnologyIds.includes("high-bypass-turbofans") ? "high-bypass-turbofan" : "low-bypass-turbofan",
-      avionicsPackage: unlockedTechnologyIds.includes("improved-avionics") ? "improved-analog" : "analog",
-      technologyPackage: unlockedTechnologyIds.filter((technologyId) =>
-        ["improved-aluminum-alloys", "high-bypass-turbofans", "improved-aerodynamics", "reliability-growth-testing"].includes(technologyId)
-      )
-    },
-    unlockedTechnologyIds
-  );
+function visualClamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
-function createOpeningDesignInput(state: GameState): AircraftDesignInput {
+function createOpeningDesignInput(state: GameState): AircraftStudioDesign {
   const player = state.manufacturers[state.playerCompanyId];
   const manufacturerIdentityId = player?.identityId ?? state.settings.playerManufacturerIdentityId ?? "player";
-  return createDefaultDesignInputForUnlocked(
-    DEFAULT_DESIGN_CATEGORY,
-    getDefaultPlayerAircraftName(DEFAULT_DESIGN_CATEGORY, state.date.year, state.contentSettings.namingMode, manufacturerIdentityId),
-    player?.unlockedTechnologyIds ?? ["improved-aluminum-alloys"]
+  return sanitizeAircraftStudioDesign(
+    createDefaultAircraftStudioDesign(
+      DEFAULT_DESIGN_CATEGORY,
+      getDefaultPlayerAircraftName(DEFAULT_DESIGN_CATEGORY, state.date.year, state.contentSettings.namingMode, manufacturerIdentityId),
+      state.date.year + 4
+    ),
+    player?.unlockedTechnologyIds ?? ["improved-aluminum-alloys"],
+    state.date.year + 4
   );
 }
 

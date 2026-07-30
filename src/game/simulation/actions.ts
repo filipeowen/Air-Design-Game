@@ -1,6 +1,7 @@
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
 import { resolveFactoryCountry } from "@/data/factoryCountries";
 import { getAircraftIdentityByDisplayName } from "@/data/identities";
+import { buildAircraftDesignInputFromStudio, sanitizeAircraftStudioDesign } from "@/game/aircraft/advancedDesign";
 import { calculateAircraftDesign } from "@/game/aircraft/design";
 import { createAircraftProgram } from "@/game/development/process";
 import { appendGameEmail, ensureEmailInbox } from "@/game/email/messages";
@@ -18,6 +19,37 @@ export function launchPlayerAircraftProgram(state: GameState, input: AircraftDes
   }
 
   const sanitizedInput = sanitizeAircraftDesignInput(input, player.unlockedTechnologyIds);
+  if (sanitizedInput.validation?.status === "invalid") {
+    appendGameEmail(next, {
+      from: "Engineering Review Board",
+      category: "engineering",
+      priority: "important",
+      subject: `Program blocked: ${sanitizedInput.name}`,
+      preview: `${sanitizedInput.name} has unresolved design issues and was not authorized.`,
+      body: [
+        "The aircraft configuration failed engineering validation and cannot enter formal development yet.",
+        ...sanitizedInput.validation.items
+          .filter((item) => item.level === "invalid")
+          .slice(0, 4)
+          .map((item) => `${item.title}: ${item.fix}`)
+      ],
+      actions: [
+        {
+          id: "open-design-studio",
+          label: "Open design studio",
+          actionType: "navigate",
+          targetRoute: "/development",
+          targetEntityId: "design-studio"
+        }
+      ],
+      relatedEntity: {
+        type: "aircraftProgram",
+        id: "design-studio"
+      },
+      relatedEntityId: "design-studio"
+    });
+    return next;
+  }
   const aircraftIdentity = getAircraftIdentityByDisplayName(sanitizedInput.name, next.contentSettings.namingMode);
   const calculated = calculateAircraftDesign(sanitizedInput);
   const design = {
@@ -110,6 +142,11 @@ export function startPlayerResearch(
 
 export function sanitizeAircraftDesignInput(input: AircraftDesignInput, unlockedTechnologyIds: string[]): AircraftDesignInput {
   const unlocked = new Set(unlockedTechnologyIds);
+  if (input.studio) {
+    const studio = sanitizeAircraftStudioDesign(input.studio, unlockedTechnologyIds, input.intendedEntryIntoServiceYear ?? input.studio.intendedEntryIntoServiceYear);
+    return buildAircraftDesignInputFromStudio(studio);
+  }
+
   const category = AIRCRAFT_CATEGORIES[input.category];
   const engineType =
     input.engineType === "advanced-turbofan" && !unlocked.has("advanced-turbofans")

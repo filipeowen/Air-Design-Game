@@ -217,9 +217,227 @@ export interface StrategicAmbition {
   requiredConditions: string[];
 }
 
+export type MissionProfile =
+  | "short-haul"
+  | "medium-haul"
+  | "long-haul"
+  | "high-capacity"
+  | "low-operating-cost"
+  | "premium-comfort"
+  | "small-airport-operations"
+  | "balanced";
+
+export type CabinClass = "economy" | "premium-economy" | "business" | "first";
+export type EngineModelId =
+  | "jt3d-3b"
+  | "jt8d-9"
+  | "jt9d-7"
+  | "cfm56-3"
+  | "v2500-a1"
+  | "cf6-50"
+  | "rb211-524"
+  | "pw4000"
+  | "ge90-90b";
+export type EnginePosition = "under-wing" | "rear-fuselage" | "tail-mounted";
+export type HighLiftSystem = "simple-flaps" | "double-slotted" | "advanced-high-lift";
+export type WingtipDevice = "none" | "early-wingtip" | "winglet" | "raked-tip";
+export type StructuralMaterialChoice =
+  | "classic-aluminum"
+  | "improved-aluminum"
+  | "aluminum-lithium"
+  | "early-composite"
+  | "composite-secondary"
+  | "primary-composite";
+export type AvionicsGeneration = "analog" | "improved-analog" | "digital-i" | "integrated-modular";
+export type FlightControlSystem = "mechanical" | "hydraulic-boosted" | "digital-fly-by-wire";
+export type RedundancyLevel = "basic" | "standard" | "enhanced" | "triple-redundant";
+export type TestingIntensity = "lean" | "standard" | "expanded" | "airline-proving";
+export type AircraftDesignStageId =
+  | "brief"
+  | "fuselage"
+  | "cabin"
+  | "wing"
+  | "propulsion"
+  | "fuel"
+  | "structure"
+  | "systems"
+  | "performance"
+  | "commercial"
+  | "final";
+
+export interface FuselageDesign {
+  externalDiameterM: number;
+  internalCabinWidthM: number;
+  totalLengthM: number;
+  usableCabinLengthM: number;
+  noseLengthM: number;
+  tailLengthM: number;
+  cargoVolumeM3: number;
+  doorCount: number;
+  exitCount: number;
+  deckCount: number;
+  cargoDeckConfiguration: "none" | "bulk" | "standard-containers" | "widebody-containers";
+}
+
+export interface CabinZone {
+  cabinClass: CabinClass;
+  zoneLengthM: number;
+  seatsAcross: number;
+  seatWidthM: number;
+  seatPitchM: number;
+  layoutPattern: string;
+}
+
+export interface CabinDesign {
+  zones: CabinZone[];
+  aisleCount: number;
+  aisleWidthM: number;
+  lavatoryCount: number;
+  galleyCount: number;
+  galleySizeM2: number;
+  crewRestAreaM2: number;
+  storageAreaM2: number;
+  accessibleSeatingShare: number;
+  cargoSpaceSacrificeM3: number;
+}
+
+export interface WingDesign {
+  wingspanM: number;
+  wingAreaM2: number;
+  sweepDeg: number;
+  thicknessRatio: number;
+  highLiftSystem: HighLiftSystem;
+  wingtipDevice: WingtipDevice;
+  wingFuelVolumeM3: number;
+  mountingPosition: "low" | "mid" | "high";
+}
+
+export interface PropulsionDesign {
+  engineModelId: EngineModelId;
+  engineCount: number;
+  position: EnginePosition;
+  thrustDeratePercent: number;
+  commonalityPreference: number;
+  maintenancePriority: "cost" | "balanced" | "reliability";
+}
+
+export interface FuelSystemDesign {
+  centerTankVolumeM3: number;
+  auxiliaryTankVolumeM3: number;
+  reservePolicyPercent: number;
+  payloadPriority: "payload" | "balanced" | "range";
+  mtowTargetKg: number;
+  structuralFuelReinforcement: number;
+}
+
+export interface StructureDesign {
+  fuselageMaterial: StructuralMaterialChoice;
+  wingMaterial: StructuralMaterialChoice;
+  tailMaterial: StructuralMaterialChoice;
+  controlSurfaceMaterial: StructuralMaterialChoice;
+  interiorMaterial: "standard" | "lightweight" | "premium";
+  landingGearMaterial: "standard-steel" | "reinforced-steel" | "advanced-alloy";
+}
+
+export interface SystemsDesign {
+  avionics: AvionicsGeneration;
+  cockpit: "three-crew" | "two-crew-analog" | "glass-cockpit";
+  flightControls: FlightControlSystem;
+  redundancy: RedundancyLevel;
+  hydraulics: "conventional" | "dual" | "triple";
+  electrical: "conventional" | "expanded" | "advanced";
+  fireProtection: "standard" | "improved" | "advanced";
+  iceProtection: "standard" | "enhanced";
+  environmentalControl: "standard" | "improved" | "advanced";
+  diagnostics: "manual" | "fault-isolation" | "predictive";
+  reliabilityTesting: TestingIntensity;
+  reliabilityGoal: number;
+}
+
+export interface AircraftStudioDesign {
+  programName: string;
+  familyName: string;
+  designation: string;
+  category: AircraftCategory;
+  missionProfile: MissionProfile;
+  intendedEntryIntoServiceYear: number;
+  fuselage: FuselageDesign;
+  cabin: CabinDesign;
+  wing: WingDesign;
+  propulsion: PropulsionDesign;
+  fuelSystem: FuelSystemDesign;
+  structure: StructureDesign;
+  systems: SystemsDesign;
+  technologyPackage: string[];
+  commonality: number;
+  designVersion: number;
+  status: "draft" | "launched" | "retired";
+}
+
+export interface AircraftValidationItem {
+  level: "warning" | "invalid";
+  stage: AircraftDesignStageId;
+  title: string;
+  message: string;
+  fix: string;
+}
+
+export interface AircraftValidationResult {
+  status: "valid" | "warning" | "invalid";
+  items: AircraftValidationItem[];
+}
+
+export interface AircraftCalculatedPerformance {
+  typicalPassengerCapacity: number;
+  maximumCertifiedCapacity: number;
+  cargoCapacityKg: number;
+  cabinComfort: number;
+  comfortRating: string;
+  cabinDensity: number;
+  operatingEmptyWeightKg: number;
+  payloadWeightKg: number;
+  fuelCapacityKg: number;
+  maximumTakeoffWeightKg: number;
+  maximumLandingWeightKg: number;
+  maximumPayloadRangeNm: number;
+  typicalRangeNm: number;
+  maximumFuelRangeNm: number;
+  ferryRangeNm: number;
+  cruiseSpeedMach: number;
+  takeoffDistanceM: number;
+  landingDistanceM: number;
+  tripFuelBurnKg: number;
+  fuelBurnPerSeatKg: number;
+  wingAspectRatio: number;
+  liftToDragRatio: number;
+  gateCategory: "regional" | "narrow-body" | "wide-body" | "large-wide-body";
+  airportCompatibility: number;
+  developmentCost: number;
+  developmentMonths: number;
+  unitProductionCost: number;
+  estimatedSellingPrice: number;
+  maintenanceCostPerFlightHour: number;
+  predictedReliability: number;
+  technicalRisk: number;
+  certificationDifficulty: number;
+  airlineAppeal: number;
+  breakEvenUnits: number;
+  requiredFactorySize: FactorySize;
+  requiredEngineers: number;
+  drivers: Record<string, string[]>;
+  validation: AircraftValidationResult;
+}
+
 export interface AircraftDesignInput {
   name: string;
   category: AircraftCategory;
+  familyName?: string;
+  designation?: string;
+  missionProfile?: MissionProfile;
+  intendedEntryIntoServiceYear?: number;
+  studio?: AircraftStudioDesign;
+  calculated?: AircraftCalculatedPerformance;
+  validation?: AircraftValidationResult;
   passengerCapacity: number;
   rangeNm: number;
   cruiseSpeedMach: number;

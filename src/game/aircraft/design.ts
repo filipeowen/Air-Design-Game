@@ -1,4 +1,5 @@
 import { AIRCRAFT_CATEGORIES } from "@/data/aircraftCategories";
+import { buildAircraftDesignInputFromStudio } from "@/game/aircraft/advancedDesign";
 import type { AircraftCategory, AircraftDesign, AircraftDesignInput, AircraftDesignMetrics } from "@/game/types";
 
 const MATERIAL_WEIGHT_FACTOR: Record<AircraftDesignInput["structuralMaterial"], number> = {
@@ -56,6 +57,10 @@ export function createDefaultDesignInput(category: AircraftCategory, name = "New
 }
 
 export function calculateAircraftDesign(input: AircraftDesignInput): Omit<AircraftDesign, "id" | "manufacturerId" | "createdTurn"> {
+  if (input.studio) {
+    return calculateStudioAircraftDesign(input);
+  }
+
   const category = AIRCRAFT_CATEGORIES[input.category];
   const capacityMid = (category.capacityRange[0] + category.capacityRange[1]) / 2;
   const rangeMid = (category.rangeRangeNm[0] + category.rangeRangeNm[1]) / 2;
@@ -165,6 +170,60 @@ export function calculateAircraftDesign(input: AircraftDesignInput): Omit<Aircra
     metrics,
     tradeoffs: describeTradeoffs(input, metrics),
     warnings: describeWarnings(input, metrics)
+  };
+}
+
+function calculateStudioAircraftDesign(input: AircraftDesignInput): Omit<AircraftDesign, "id" | "manufacturerId" | "createdTurn"> {
+  const advancedInput = input.calculated && input.validation ? input : buildAircraftDesignInputFromStudio(input.studio!);
+  const performance = advancedInput.calculated!;
+  const expectedProfitMargin = ((performance.estimatedSellingPrice - performance.unitProductionCost) / Math.max(1, performance.estimatedSellingPrice)) * 100;
+  const fuelEfficiencyScore = clamp(
+    100 - performance.fuelBurnPerSeatKg / (advancedInput.category === "wide-body" ? 30 : advancedInput.category === "narrow-body" ? 16 : 10),
+    5,
+    98
+  );
+  const takeoffPerformanceScore = clamp(103 - performance.takeoffDistanceM / 45, 5, 98);
+  const landingPerformanceScore = clamp(103 - performance.landingDistanceM / 42, 5, 98);
+
+  const metrics: AircraftDesignMetrics = {
+    maximumTakeoffWeightKg: performance.maximumTakeoffWeightKg,
+    emptyWeightKg: performance.operatingEmptyWeightKg,
+    payloadKg: performance.payloadWeightKg,
+    fuelCapacityKg: performance.fuelCapacityKg,
+    estimatedRangeNm: performance.typicalRangeNm,
+    cruiseSpeedMach: performance.cruiseSpeedMach,
+    fuelEfficiencyScore: round(fuelEfficiencyScore),
+    takeoffPerformanceScore: round(takeoffPerformanceScore),
+    landingPerformanceScore: round(landingPerformanceScore),
+    airportCompatibilityScore: performance.airportCompatibility,
+    estimatedReliability: performance.predictedReliability,
+    maintenanceCostPerFlightHour: performance.maintenanceCostPerFlightHour,
+    developmentCost: performance.developmentCost,
+    developmentDurationMonths: performance.developmentMonths,
+    unitProductionCost: performance.unitProductionCost,
+    certificationDifficulty: performance.certificationDifficulty,
+    airlineAppeal: performance.airlineAppeal,
+    expectedSellingPrice: performance.estimatedSellingPrice,
+    expectedProfitMargin: round(expectedProfitMargin),
+    technologyRisk: performance.technicalRisk,
+    complexity: round(clamp(performance.technicalRisk * 0.62 + performance.certificationDifficulty * 0.38, 5, 100))
+  };
+
+  const tradeoffs = Object.entries(performance.drivers).flatMap(([section, lines]) =>
+    lines.map((line) => `${section}: ${line}.`)
+  );
+  if (performance.breakEvenUnits > 180) {
+    tradeoffs.push(`Commercial: Break-even volume is high at ${performance.breakEvenUnits.toLocaleString()} aircraft.`);
+  }
+  if (performance.requiredFactorySize === "large") {
+    tradeoffs.push("Manufacturing: This program needs a large final-assembly factory.");
+  }
+
+  return {
+    input: advancedInput,
+    metrics,
+    tradeoffs,
+    warnings: performance.validation.items.map((item) => `${item.title}: ${item.message}`)
   };
 }
 
