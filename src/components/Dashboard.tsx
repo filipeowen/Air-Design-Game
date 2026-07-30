@@ -219,7 +219,7 @@ export function Dashboard() {
   const actionRequiredEmailCount = emails.filter((email) => email.requiresAction && email.status === "open" && !email.archived).length;
 
   if (!bootstrapped) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-700">Loading campaign...</div>;
+    return <div className="flex min-h-screen items-center justify-center text-sm text-[#d7deea]">Loading campaign...</div>;
   }
 
   if (!gameState) {
@@ -240,7 +240,7 @@ export function Dashboard() {
   }
 
   if (!gameState || !player) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-700">Loading campaign...</div>;
+    return <div className="flex min-h-screen items-center justify-center text-sm text-[#d7deea]">Loading campaign...</div>;
   }
 
   function navigate(target: GameDeepLinkTarget) {
@@ -319,14 +319,14 @@ export function Dashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f5f1] text-[#17211c]">
-      <header className="border-b border-[#d8ddd2] bg-white">
+    <main className="min-h-screen bg-[#080b11] text-[#e8eef8]">
+      <header className="border-b border-[#2a3445] bg-[#111827]">
         <div className="mx-auto grid max-w-7xl gap-4 px-4 py-4 xl:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.55fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <AircraftPlanform />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-semibold tracking-normal">{player.name}</h1>
-              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-neutral-600">
+              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-[#a8b3c4]">
                 <span className="inline-flex items-center gap-1.5">
                   <CalendarDays size={16} /> {formatGameDate(gameState.date)}
                 </span>
@@ -352,7 +352,7 @@ export function Dashboard() {
       </header>
 
       <div className="mx-auto grid max-w-7xl gap-4 px-4 py-4 lg:grid-cols-[220px_1fr]">
-        <nav className="flex gap-2 overflow-x-auto rounded-lg border border-[#d8ddd2] bg-white p-2 lg:block lg:overflow-visible">
+        <nav className="flex gap-2 overflow-x-auto rounded-lg border border-[#2a3445] bg-[#111827] p-2 lg:block lg:overflow-visible">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -361,7 +361,7 @@ export function Dashboard() {
                 key={tab.id}
                 onClick={() => navigate({ section: tab.id })}
                 className={`focus-ring flex min-w-fit items-center gap-2 rounded-md px-3 py-2 text-sm transition lg:w-full ${
-                  active ? "bg-[#0f766e] text-white" : "text-neutral-700 hover:bg-[#eef3ee]"
+                  active ? "bg-[#f2b84b] text-[#16110a]" : "text-[#d7deea] hover:bg-[#202b3d]"
                 }`}
               >
                 <Icon size={16} />
@@ -450,8 +450,8 @@ function HeaderStats({
   return (
     <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-2">
       {stats.map((stat) => (
-        <div key={stat.label} className="min-w-0 rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase text-neutral-500">{stat.label}</div>
+        <div key={stat.label} className="min-w-0 rounded-md border border-[#2a3445] bg-[#182233] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase text-[#8896aa]">{stat.label}</div>
           <div className="mt-0.5 break-words text-sm font-semibold leading-5">{stat.value}</div>
         </div>
       ))}
@@ -477,14 +477,14 @@ function StartScreen({
   const visibleSlots = saveSlots.slice(0, 5);
 
   return (
-    <main className="min-h-screen bg-[#f4f5f1] text-[#17211c]">
+    <main className="min-h-screen bg-[#080b11] text-[#e8eef8]">
       <section className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-5">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#d8ddd2] pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2a3445] pb-5">
           <div className="flex min-w-0 items-center gap-4">
             <AircraftPlanform />
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold tracking-normal">Aircraft Producer</h1>
-              <p className="mt-1 text-sm text-neutral-600">January 1970</p>
+              <p className="mt-1 text-sm text-[#a8b3c4]">January 1970</p>
             </div>
           </div>
           {autosaveState ? <IconButton title="Continue autosave" icon={Play} label="Continue" onClick={continueCampaign} primary /> : null}
@@ -492,41 +492,41 @@ function StartScreen({
 
         <div className="grid flex-1 gap-5 lg:grid-cols-[280px_1fr]">
           <aside className="space-y-4">
-            <section className="rounded-lg border border-[#d8ddd2] bg-white p-4">
+            <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-4">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold uppercase tracking-normal text-neutral-600">Campaign</h2>
-                <CalendarDays size={17} className="text-[#0f766e]" />
+                <h2 className="text-sm font-semibold uppercase tracking-normal text-[#a8b3c4]">Campaign</h2>
+                <CalendarDays size={17} className="text-[#f2b84b]" />
               </div>
               {autosaveState ? (
                 <button
                   onClick={continueCampaign}
-                  className="focus-ring mt-4 w-full rounded-md border border-[#0f766e] bg-[#0f766e] px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-[#115e59]"
+                  className="focus-ring mt-4 w-full rounded-md border border-[#f2b84b] bg-[#f2b84b] px-3 py-2 text-left text-sm font-semibold text-[#16110a] transition hover:bg-[#d99a2b]"
                 >
                   Continue {autosaveState.settings.playerCompanyName}
-                  <span className="mt-1 block text-xs font-medium text-teal-50">{formatGameDate(autosaveState.date)}</span>
+                  <span className="mt-1 block text-xs font-medium text-[#2a1b08]">{formatGameDate(autosaveState.date)}</span>
                 </button>
               ) : (
-                <p className="mt-4 text-sm text-neutral-600">No autosave found.</p>
+                <p className="mt-4 text-sm text-[#a8b3c4]">No autosave found.</p>
               )}
             </section>
 
-            <section className="rounded-lg border border-[#d8ddd2] bg-white p-4">
+            <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-4">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold uppercase tracking-normal text-neutral-600">Saves</h2>
-                <Save size={17} className="text-[#0f766e]" />
+                <h2 className="text-sm font-semibold uppercase tracking-normal text-[#a8b3c4]">Saves</h2>
+                <Save size={17} className="text-[#f2b84b]" />
               </div>
               <div className="mt-3 space-y-2">
                 {visibleSlots.length === 0 ? (
-                  <p className="text-sm text-neutral-600">No manual saves yet.</p>
+                  <p className="text-sm text-[#a8b3c4]">No manual saves yet.</p>
                 ) : (
                   visibleSlots.map((slot) => (
                     <button
                       key={slot.slotId}
                       onClick={() => loadSlot(slot.slotId)}
-                      className="focus-ring w-full rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2 text-left transition hover:border-[#0f766e] hover:bg-[#eef8f5]"
+                      className="focus-ring w-full rounded-md border border-[#2a3445] bg-[#182233] px-3 py-2 text-left transition hover:border-[#f2b84b] hover:bg-[#1d2f46]"
                     >
                       <span className="block truncate text-sm font-semibold">{slot.companyName}</span>
-                      <span className="mt-1 block truncate text-xs text-neutral-600">{slot.slotId} · {slot.dateLabel}</span>
+                      <span className="mt-1 block truncate text-xs text-[#a8b3c4]">{slot.slotId} · {slot.dateLabel}</span>
                     </button>
                   ))
                 )}
@@ -534,13 +534,13 @@ function StartScreen({
             </section>
           </aside>
 
-          <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+          <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold">Select Manufacturer</h2>
-                <p className="mt-1 text-sm text-neutral-600">Temporary real-world naming mode</p>
+                <p className="mt-1 text-sm text-[#a8b3c4]">Temporary real-world naming mode</p>
               </div>
-              <span className="rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-1.5 text-xs font-semibold uppercase text-neutral-600">
+              <span className="rounded-md border border-[#2a3445] bg-[#182233] px-3 py-1.5 text-xs font-semibold uppercase text-[#a8b3c4]">
                 {manufacturers.length} choices
               </span>
             </div>
@@ -550,19 +550,19 @@ function StartScreen({
                 <button
                   key={manufacturer.id}
                   onClick={() => startCampaign(manufacturer.id)}
-                  className="focus-ring group min-h-40 rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-4 text-left transition hover:border-[#0f766e] hover:bg-[#eef8f5]"
+                  className="focus-ring group min-h-40 rounded-lg border border-[#2a3445] bg-[#182233] p-4 text-left transition hover:border-[#f2b84b] hover:bg-[#1d2f46]"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-[#17211c] text-sm font-semibold text-white">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-[#0b111c] text-sm font-semibold text-[#e8eef8]">
                       {manufacturer.shortName.slice(0, 2).toUpperCase()}
                     </div>
-                    <span className="rounded-md border border-[#d8ddd2] bg-white px-2 py-1 text-xs font-semibold text-neutral-600">
+                    <span className="rounded-md border border-[#2a3445] bg-[#111827] px-2 py-1 text-xs font-semibold text-[#a8b3c4]">
                       {manufacturer.country}
                     </span>
                   </div>
                   <h3 className="mt-4 text-lg font-semibold">{manufacturer.displayName}</h3>
-                  <p className="mt-1 text-sm text-neutral-600">{manufacturer.shortName}</p>
-                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#0f766e]">
+                  <p className="mt-1 text-sm text-[#a8b3c4]">{manufacturer.shortName}</p>
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#f2b84b]">
                     Start campaign
                     <Play size={15} className="transition group-hover:translate-x-0.5" />
                   </div>
@@ -591,35 +591,35 @@ function SaveMenu({
 }) {
   return (
     <details className="relative">
-      <summary className="focus-ring inline-flex h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-[#d8ddd2] bg-white px-3 text-sm font-medium text-neutral-700 transition hover:bg-[#eef3ee]">
+      <summary className="focus-ring inline-flex h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-[#2a3445] bg-[#111827] px-3 text-sm font-medium text-[#d7deea] transition hover:bg-[#202b3d]">
         <Save size={16} />
         Save
       </summary>
-      <div className="absolute right-0 z-50 mt-2 w-80 rounded-lg border border-[#d8ddd2] bg-white p-3 shadow-xl">
+      <div className="absolute right-0 z-50 mt-2 w-80 rounded-lg border border-[#2a3445] bg-[#111827] p-3 shadow-xl">
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={manualSave} className="focus-ring rounded-md border border-[#d8ddd2] px-3 py-2 text-sm font-medium hover:bg-[#eef3ee]">
+          <button onClick={manualSave} className="focus-ring rounded-md border border-[#2a3445] px-3 py-2 text-sm font-medium hover:bg-[#202b3d]">
             Manual save
           </button>
-          <button onClick={newCampaign} className="focus-ring rounded-md border border-[#d8ddd2] px-3 py-2 text-sm font-medium hover:bg-[#eef3ee]">
+          <button onClick={newCampaign} className="focus-ring rounded-md border border-[#2a3445] px-3 py-2 text-sm font-medium hover:bg-[#202b3d]">
             New campaign
           </button>
         </div>
         <div className="mt-3 max-h-72 overflow-y-auto">
           {saveSlots.length === 0 ? (
-            <p className="px-1 py-2 text-sm text-neutral-600">No saves yet.</p>
+            <p className="px-1 py-2 text-sm text-[#a8b3c4]">No saves yet.</p>
           ) : (
             saveSlots.map((slot) => (
-              <div key={slot.slotId} className="border-t border-[#edf0ea] py-2 first:border-t-0">
+              <div key={slot.slotId} className="border-t border-[#222c3b] py-2 first:border-t-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">{slot.slotId}</div>
-                    <div className="truncate text-xs text-neutral-600">{slot.companyName} · {slot.dateLabel}</div>
+                    <div className="truncate text-xs text-[#a8b3c4]">{slot.companyName} · {slot.dateLabel}</div>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => loadSlot(slot.slotId)} className="focus-ring rounded px-2 py-1 text-xs font-semibold text-[#0f766e] hover:bg-[#eef3ee]">
+                    <button onClick={() => loadSlot(slot.slotId)} className="focus-ring rounded px-2 py-1 text-xs font-semibold text-[#f2b84b] hover:bg-[#202b3d]">
                       Load
                     </button>
-                    <button onClick={() => deleteSlot(slot.slotId)} className="focus-ring rounded px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">
+                    <button onClick={() => deleteSlot(slot.slotId)} className="focus-ring rounded px-2 py-1 text-xs font-semibold text-[#fca5a5] hover:bg-[#3b1518]">
                       Delete
                     </button>
                   </div>
@@ -696,10 +696,10 @@ function KpiStrip({
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <div key={item.label} className="rounded-lg border border-[#d8ddd2] bg-white p-4">
-            <div className="flex items-center justify-between gap-3 text-sm text-neutral-600">
+          <div key={item.label} className="rounded-lg border border-[#2a3445] bg-[#111827] p-4">
+            <div className="flex items-center justify-between gap-3 text-sm text-[#a8b3c4]">
               <span>{item.label}</span>
-              <Icon size={17} className="text-[#0f766e]" />
+              <Icon size={17} className="text-[#f2b84b]" />
             </div>
             <div className="mt-2 text-2xl font-semibold tracking-normal">{item.value}</div>
           </div>
@@ -738,10 +738,10 @@ function OverviewTab({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-      <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+      <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Executive Dashboard</h2>
-          <span className="text-sm text-neutral-600">{formatGameDate(gameState.date)}</span>
+          <span className="text-sm text-[#a8b3c4]">{formatGameDate(gameState.date)}</span>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
           <Metric label="Cash" value={formatMoney(player.cash)} />
@@ -761,23 +761,23 @@ function OverviewTab({
           <OverviewTile title="Finance" lines={[`Cash ${formatMoney(player.cash)}`, `Development ${playerFinancial ? formatMoney(playerFinancial.developmentExpenses) : "$0"}`, `Factory ${playerFinancial ? formatMoney(playerFinancial.factoryExpenses) : "$0"}`]} button="Open finance" onClick={() => navigate({ section: "finance" })} />
           <OverviewTile title="Orders" lines={[`${orders.length} contracts`, `${backlog} aircraft backlog`, `${Object.values(gameState.airlines).length} tracked airlines`]} button="Open orders" onClick={() => navigate({ section: "orders" })} />
         </div>
-        <div className="mt-5 rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-4">
-          <h3 className="text-sm font-semibold text-neutral-700">Market Intelligence</h3>
-          <p className="mt-2 text-sm text-neutral-600">
+        <div className="mt-5 rounded-lg border border-[#2a3445] bg-[#182233] p-4">
+          <h3 className="text-sm font-semibold text-[#d7deea]">Market Intelligence</h3>
+          <p className="mt-2 text-sm text-[#a8b3c4]">
             {strongestCompetitor
               ? `${strongestCompetitor.name} is the most visible competitor in current share summaries. Major competitor moves will continue to arrive by email.`
               : "Competitor activity will arrive through email and appear in contextual summaries."}
           </p>
         </div>
       </section>
-      <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+      <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
         <h2 className="text-lg font-semibold">Warnings</h2>
         <div className="mt-4 space-y-3">
           {warnings.length === 0 ? (
-            <p className="text-sm text-neutral-600">No major warnings.</p>
+            <p className="text-sm text-[#a8b3c4]">No major warnings.</p>
           ) : (
             warnings.map((warning) => (
-              <div key={warning} className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div key={warning} className="flex gap-3 rounded-lg border border-[#7c5a1e] bg-[#2a1d0b] p-3 text-sm text-[#ffd48a]">
                 <AlertTriangle size={18} />
                 <span>{warning}</span>
               </div>
@@ -785,19 +785,19 @@ function OverviewTab({
           )}
         </div>
         <div className="mt-5">
-          <h3 className="text-sm font-semibold text-neutral-700">Latest Messages</h3>
+          <h3 className="text-sm font-semibold text-[#d7deea]">Latest Messages</h3>
           <div className="mt-2 space-y-2">
             {latestEmails.map((email) => (
               <button
                 key={email.id}
                 onClick={() => navigate({ section: "email", entityType: "email", entityId: email.id })}
-                className="focus-ring w-full rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2 text-left"
+                className="focus-ring w-full rounded-md border border-[#2a3445] bg-[#182233] px-3 py-2 text-left"
               >
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="font-semibold">{email.subject}</span>
-                  <span className="text-xs text-neutral-500">{formatGameDate(email.date)}</span>
+                  <span className="text-xs text-[#8896aa]">{formatGameDate(email.date)}</span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-sm text-neutral-600">{email.preview}</p>
+                <p className="mt-1 line-clamp-2 text-sm text-[#a8b3c4]">{email.preview}</p>
               </button>
             ))}
           </div>
@@ -819,14 +819,14 @@ function OverviewTile({
   onClick: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-[#d8ddd2] p-4">
+    <div className="rounded-lg border border-[#2a3445] p-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <button onClick={onClick} className="focus-ring rounded-md px-2 py-1 text-xs font-semibold text-[#0f766e] hover:bg-[#eef3ee]">
+        <button onClick={onClick} className="focus-ring rounded-md px-2 py-1 text-xs font-semibold text-[#f2b84b] hover:bg-[#202b3d]">
           {button}
         </button>
       </div>
-      <div className="mt-3 space-y-1 text-sm text-neutral-600">
+      <div className="mt-3 space-y-1 text-sm text-[#a8b3c4]">
         {lines.map((line) => (
           <p key={line}>{line}</p>
         ))}
@@ -894,7 +894,7 @@ function AircraftTab({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
-      <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+      <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Design Studio</h2>
           <IconButton title="Launch program" onClick={launch} icon={Play} label="Launch" primary />
@@ -905,7 +905,7 @@ function AircraftTab({
             <input
               value={designInput.name}
               onChange={(event) => update("name", event.target.value)}
-              className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+              className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
             />
           </label>
           <label className="block text-sm font-medium">
@@ -916,7 +916,7 @@ function AircraftTab({
                 const category = event.target.value as AircraftCategory;
                 setDesignInput(createDefaultDesignInputForUnlocked(category, designInput.name, unlockedTechnologyIds));
               }}
-              className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+              className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
             >
               {Object.values(AIRCRAFT_CATEGORIES).map((category) => (
                 <option key={category.id} value={category.id}>
@@ -950,7 +950,7 @@ function AircraftTab({
               <select
                 value={designInput.engineType}
                 onChange={(event) => update("engineType", event.target.value as AircraftDesignInput["engineType"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
               >
                 {engineOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -964,7 +964,7 @@ function AircraftTab({
               <select
                 value={designInput.structuralMaterial}
                 onChange={(event) => update("structuralMaterial", event.target.value as AircraftDesignInput["structuralMaterial"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
               >
                 {materialOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -980,7 +980,7 @@ function AircraftTab({
               <select
                 value={designInput.avionicsPackage}
                 onChange={(event) => update("avionicsPackage", event.target.value as AircraftDesignInput["avionicsPackage"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
               >
                 {avionicsOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -994,7 +994,7 @@ function AircraftTab({
               <select
                 value={designInput.landingGear}
                 onChange={(event) => update("landingGear", event.target.value as AircraftDesignInput["landingGear"])}
-                className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] px-3 py-2"
+                className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] px-3 py-2"
               >
                 {landingGearOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -1008,22 +1008,22 @@ function AircraftTab({
           <RangeControl label="Cabin comfort" value={designInput.cabinComfort} min={30} max={90} step={1} onChange={(value) => update("cabinComfort", value)} />
           <RangeControl label="Commonality" value={designInput.commonality} min={0} max={90} step={1} onChange={(value) => update("commonality", value)} />
           <div>
-            <h3 className="text-sm font-semibold text-neutral-700">Technology package</h3>
-            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-md border border-[#d8ddd2] p-2">
+            <h3 className="text-sm font-semibold text-[#d7deea]">Technology package</h3>
+            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-md border border-[#2a3445] p-2">
               {unlockedDesignTechnologies.length === 0 ? (
-                <p className="px-2 py-1 text-sm text-neutral-600">No unlocked design technologies.</p>
+                <p className="px-2 py-1 text-sm text-[#a8b3c4]">No unlocked design technologies.</p>
               ) : (
                 unlockedDesignTechnologies.map((technology) => (
-                  <label key={technology.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[#eef3ee]">
+                  <label key={technology.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[#202b3d]">
                     <input
                       type="checkbox"
                       checked={designInput.technologyPackage.includes(technology.id)}
                       onChange={() => toggleTechnology(technology.id)}
-                      className="mt-1 accent-[#0f766e]"
+                      className="mt-1 accent-[#f2b84b]"
                     />
                     <span>
                       <span className="block font-medium">{technology.name}</span>
-                      <span className="block text-xs text-neutral-600">{technology.effects[0]}</span>
+                      <span className="block text-xs text-[#a8b3c4]">{technology.effects[0]}</span>
                     </span>
                   </label>
                 ))
@@ -1033,11 +1033,11 @@ function AircraftTab({
         </div>
       </section>
 
-      <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+      <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">{designInput.name}</h2>
-            <p className="mt-1 text-sm text-neutral-600">{AIRCRAFT_CATEGORIES[designInput.category].label}</p>
+            <p className="mt-1 text-sm text-[#a8b3c4]">{AIRCRAFT_CATEGORIES[designInput.category].label}</p>
           </div>
           <AircraftSpecimen input={designInput} />
         </div>
@@ -1095,11 +1095,11 @@ function DevelopmentTab({
   }, [focusedTarget]);
 
   return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+    <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Development</h2>
-          <p className="mt-1 text-sm text-neutral-600">Programs, aircraft design, certified portfolio, and engineering workforce.</p>
+          <p className="mt-1 text-sm text-[#a8b3c4]">Programs, aircraft design, certified portfolio, and engineering workforce.</p>
         </div>
         <SubtabBar
           tabs={[
@@ -1116,19 +1116,19 @@ function DevelopmentTab({
       {section === "programs" && (
         <div className="mt-4 grid gap-3">
           {player.aircraftPrograms.length === 0 ? (
-            <p className="text-sm text-neutral-600">No aircraft programs.</p>
+            <p className="text-sm text-[#a8b3c4]">No aircraft programs.</p>
           ) : (
             player.aircraftPrograms.map((program) => (
               <div
                 key={program.id}
                 className={`rounded-lg border p-4 ${
-                  focusedTarget.entityId === program.id ? "border-[#0f766e] bg-[#eef8f5]" : "border-[#d8ddd2]"
+                  focusedTarget.entityId === program.id ? "border-[#f2b84b] bg-[#1d2f46]" : "border-[#2a3445]"
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-semibold">{program.name}</h3>
-                    <p className="mt-1 text-sm text-neutral-600">
+                    <p className="mt-1 text-sm text-[#a8b3c4]">
                       {program.stage.replaceAll("-", " ")} · {program.status}
                     </p>
                   </div>
@@ -1168,7 +1168,7 @@ function DevelopmentTab({
       {section === "portfolio" && (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[760px] border-collapse text-sm">
-            <thead className="border-b border-[#d8ddd2] text-left text-neutral-600">
+            <thead className="border-b border-[#2a3445] text-left text-[#a8b3c4]">
               <tr>
                 <th className="py-2 pr-4">Aircraft</th>
                 <th className="py-2 pr-4">Category</th>
@@ -1180,7 +1180,7 @@ function DevelopmentTab({
             </thead>
             <tbody>
               {player.aircraftModels.map((model) => (
-                <tr key={model.id} className="border-b border-[#edf0ea]">
+                <tr key={model.id} className="border-b border-[#222c3b]">
                   <td className="py-3 pr-4 font-semibold">{model.name}</td>
                   <td className="py-3 pr-4">{AIRCRAFT_CATEGORIES[model.category].label}</td>
                   <td className="py-3 pr-4">{model.capacity}</td>
@@ -1191,7 +1191,7 @@ function DevelopmentTab({
               ))}
             </tbody>
           </table>
-          {player.aircraftModels.length === 0 && <p className="mt-4 text-sm text-neutral-600">No certified aircraft yet.</p>}
+          {player.aircraftModels.length === 0 && <p className="mt-4 text-sm text-[#a8b3c4]">No certified aircraft yet.</p>}
         </div>
       )}
 
@@ -1223,11 +1223,11 @@ function ResearchTab({
   const slotsAvailable = hasResearchSlotAvailable(player);
   const assignedScientists = activeProjects.reduce((sum, project) => sum + project.assignedScientists, 0);
   return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+    <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Technology Tree</h2>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-[#a8b3c4]">
             {activeProjects.length}/{researchSlots} research slots active · {formatGameDate(gameState.date)}
           </p>
         </div>
@@ -1236,8 +1236,8 @@ function ResearchTab({
             const technology = gameState.technologies[project.technologyId]!;
             const effectiveRequired = getEffectiveResearchPointsRequired(player, technology, gameState.date.year, gameState.technologies);
             return (
-              <div key={project.id} className="min-w-52 rounded-md border border-[#d8ddd2] bg-[#f8faf6] px-3 py-2">
-                <div className="text-xs font-semibold text-neutral-700">{technology.name}</div>
+              <div key={project.id} className="min-w-52 rounded-md border border-[#2a3445] bg-[#182233] px-3 py-2">
+                <div className="text-xs font-semibold text-[#d7deea]">{technology.name}</div>
                 <ProgressBar value={(project.progress / effectiveRequired) * 100} compact />
               </div>
             );
@@ -1252,7 +1252,7 @@ function ResearchTab({
           mutateGame={mutateGame}
           role="scientists"
         />
-        <div className="rounded-lg border border-[#d8ddd2] p-4">
+        <div className="rounded-lg border border-[#2a3445] p-4">
           <h3 className="text-sm font-semibold">Research Operations</h3>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <Metric label="Slots" value={`${activeProjects.length}/${researchSlots}`} />
@@ -1427,12 +1427,12 @@ function TechnologyNode({
   const StateIcon = stateIcon;
   const className =
     state === "completed"
-      ? "border-[#e4c967] bg-[#f2d36d] text-[#201b0b] shadow-[0_0_0_2px_rgba(242,211,109,0.2)]"
+      ? "border-[#f2b84b] bg-[#3a2a10] text-[#ffe2a1] shadow-[0_0_0_2px_rgba(242,184,75,0.22)]"
       : state === "active"
-        ? "border-[#8db7e4] bg-[#d9ebfb] text-[#112235] shadow-[0_0_0_2px_rgba(141,183,228,0.16)]"
+        ? "border-[#38bdf8] bg-[#0f2c3d] text-[#dff3ff] shadow-[0_0_0_2px_rgba(56,189,248,0.16)]"
         : state === "available"
-          ? "border-[#76b39d] bg-[#e2f0e6] text-[#10261d] hover:bg-[#ecf7ef]"
-          : "border-[#465650] bg-[#26312e] text-[#b4c0ba]";
+          ? "border-[#a78bfa] bg-[#211a3a] text-[#eadfff] hover:bg-[#2d2352]"
+          : "border-[#303b4f] bg-[#111827] text-[#748095]";
 
   return (
     <div className="group absolute z-10" style={{ left: position.x, top: position.y, width: TREE_NODE_WIDTH }}>
@@ -1453,13 +1453,13 @@ function TechnologyNode({
           <span>{formatMoney(technology.researchCost)}</span>
         </div>
         {activeProject && (
-          <div className="absolute bottom-0 left-0 h-1 rounded-b bg-[#2f7d73]" style={{ width: `${Math.max(3, Math.min(100, progress))}%` }} />
+          <div className="absolute bottom-0 left-0 h-1 rounded-b bg-[#f2b84b]" style={{ width: `${Math.max(3, Math.min(100, progress))}%` }} />
         )}
-        <span className="absolute left-0 top-0 h-full w-1 rounded-l" style={{ background: branch?.accent ?? "#87948e" }} />
+        <span className="absolute left-0 top-0 h-full w-1 rounded-l" style={{ background: branch?.accent ?? "#8896aa" }} />
       </button>
-      <div className="pointer-events-none absolute left-0 top-[84px] z-40 hidden w-80 rounded-md border border-[#3a4945] bg-[#111816] p-3 text-xs leading-5 text-[#e7ede6] shadow-xl group-hover:block">
+      <div className="pointer-events-none absolute left-0 top-[84px] z-40 hidden w-80 rounded-md border border-[#2a3445] bg-[#0b111c] p-3 text-xs leading-5 text-[#e8eef8] shadow-xl group-hover:block">
         <div className="font-semibold">{technology.name}</div>
-        <div className="mt-1 text-[#b8c5bf]">
+        <div className="mt-1 text-[#a8b3c4]">
           {technology.historicalYear} · {technology.era.replaceAll("-", " ")} · {technology.researchPointsRequired} RP
         </div>
         {aheadYears > 0 && (
@@ -1527,7 +1527,7 @@ function FactoriesTab({
   }, [defaultFactoryCountry, player.identityId]);
 
   return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+    <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Factories</h2>
         <div className="flex flex-wrap items-center gap-2">
@@ -1546,7 +1546,7 @@ function FactoriesTab({
             <select
               value={selectedCountry}
               onChange={(event) => setSelectedCountry(event.target.value)}
-              className="focus-ring ml-2 rounded-md border border-[#d8ddd2] bg-white px-3 py-2"
+              className="focus-ring ml-2 rounded-md border border-[#2a3445] bg-[#111827] px-3 py-2"
             >
               {FACTORY_COUNTRIES.map((country) => (
                 <option key={country.name} value={country.name}>
@@ -1577,10 +1577,10 @@ function FactoriesTab({
               key={factory.id}
               className={`rounded-lg border p-4 ${
                 focusedTarget.entityId === factory.id
-                  ? "border-[#0f766e] bg-[#eef8f5]"
+                  ? "border-[#f2b84b] bg-[#1d2f46]"
                   : status === "closed"
-                    ? "border-[#d8ddd2] bg-[#f8faf6]"
-                    : "border-[#d8ddd2]"
+                    ? "border-[#2a3445] bg-[#182233]"
+                    : "border-[#2a3445]"
               }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1589,7 +1589,7 @@ function FactoriesTab({
                     <h3 className="font-semibold">{factory.name}</h3>
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${factoryStatusClass(status)}`}>{factoryStatusLabel(status)}</span>
                   </div>
-                  <p className="mt-1 text-sm text-neutral-600">
+                  <p className="mt-1 text-sm text-[#a8b3c4]">
                     {formatFactoryLocation(factory)} · {factory.size} · {factorySupportedCategories(factory)}
                   </p>
                 </div>
@@ -1610,7 +1610,7 @@ function FactoriesTab({
                 <Metric label="Operating cost" value={status === "active" ? formatMoney(factory.monthlyCost) : "$0"} />
               </div>
               {status === "building" && (
-                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <div className="mt-4 rounded-md border border-[#7c5a1e] bg-[#2a1d0b] px-3 py-2 text-sm text-[#ffd48a]">
                   Construction has {factory.constructionTurnsRemaining ?? 0} months remaining.
                 </div>
               )}
@@ -1627,7 +1627,7 @@ function FactoriesTab({
                         modelId ? "Factory production updated." : "Factory production idled."
                       );
                     }}
-                    className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] bg-white px-3 py-2"
+                    className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] bg-[#111827] px-3 py-2"
                   >
                     <option value="">Idle / no aircraft</option>
                     {supportedModels.map((model) => (
@@ -1637,13 +1637,13 @@ function FactoriesTab({
                     ))}
                   </select>
                 </label>
-                <div className="rounded-md bg-[#f4f5f1] px-3 py-2 text-sm">
-                  <span className="block text-xs font-medium uppercase text-neutral-500">Target rate</span>
+                <div className="rounded-md bg-[#080b11] px-3 py-2 text-sm">
+                  <span className="block text-xs font-medium uppercase text-[#8896aa]">Target rate</span>
                   <span className="mt-1 block font-semibold">{activeLine ? `${activeLine.targetMonthlyRate}/mo` : "Idle"}</span>
                 </div>
               </div>
               {status === "active" && supportedModels.length === 0 && (
-                <p className="mt-3 text-sm text-neutral-600">No certified aircraft fit this factory yet.</p>
+                <p className="mt-3 text-sm text-[#a8b3c4]">No certified aircraft fit this factory yet.</p>
               )}
             </div>
           );
@@ -1658,9 +1658,9 @@ function FactoriesTab({
             mutateGame={mutateGame}
             role="factoryWorkers"
           />
-          <div className="overflow-x-auto rounded-lg border border-[#d8ddd2]">
+          <div className="overflow-x-auto rounded-lg border border-[#2a3445]">
             <table className="w-full min-w-[620px] border-collapse text-sm">
-              <thead className="border-b border-[#d8ddd2] bg-[#f8faf6] text-left text-neutral-600">
+              <thead className="border-b border-[#2a3445] bg-[#182233] text-left text-[#a8b3c4]">
                 <tr>
                   <th className="px-3 py-2">Factory</th>
                   <th className="px-3 py-2">Country</th>
@@ -1673,7 +1673,7 @@ function FactoriesTab({
                 {player.factories.map((factory) => {
                   const required = getFactoryAssignedWorkers(factory);
                   return (
-                    <tr key={factory.id} className="border-b border-[#edf0ea]">
+                    <tr key={factory.id} className="border-b border-[#222c3b]">
                       <td className="px-3 py-3 font-semibold">{factory.name}</td>
                       <td className="px-3 py-3">{formatFactoryLocation(factory)}</td>
                       <td className="px-3 py-3">{factory.workerCount.toLocaleString()}</td>
@@ -1688,9 +1688,9 @@ function FactoriesTab({
         </div>
       )}
       {section === "deliveries" && (
-        <div className="mt-4 overflow-x-auto rounded-lg border border-[#d8ddd2]">
+        <div className="mt-4 overflow-x-auto rounded-lg border border-[#2a3445]">
           <table className="w-full min-w-[720px] border-collapse text-sm">
-            <thead className="border-b border-[#d8ddd2] bg-[#f8faf6] text-left text-neutral-600">
+            <thead className="border-b border-[#2a3445] bg-[#182233] text-left text-[#a8b3c4]">
               <tr>
                 <th className="px-3 py-2">Order</th>
                 <th className="px-3 py-2">Airline</th>
@@ -1706,7 +1706,7 @@ function FactoriesTab({
                 .map((order) => {
                   const model = player.aircraftModels.find((candidate) => candidate.id === order.modelId);
                   return (
-                    <tr key={order.id} className="border-b border-[#edf0ea]">
+                    <tr key={order.id} className="border-b border-[#222c3b]">
                       <td className="px-3 py-3 font-semibold">{order.id}</td>
                       <td className="px-3 py-3">{gameState.airlines[order.airlineId]?.name}</td>
                       <td className="px-3 py-3">{model?.name}</td>
@@ -1736,12 +1736,12 @@ function factoryStatusLabel(status: FactoryStatus): string {
 
 function factoryStatusClass(status: FactoryStatus): string {
   if (status === "building") {
-    return "bg-amber-100 text-amber-900";
+    return "bg-[#3a2a10] text-[#ffd48a]";
   }
   if (status === "closed") {
-    return "bg-neutral-200 text-neutral-700";
+    return "bg-[#283348] text-[#d7deea]";
   }
-  return "bg-emerald-100 text-emerald-800";
+  return "bg-[#0f2c3d] text-[#7dd3fc]";
 }
 
 function formatFactoryLocation(factory: FactoryRecord): string {
@@ -1780,11 +1780,11 @@ function OrdersTab({
   }, [focusedTarget]);
 
   return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+    <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Orders</h2>
-          <p className="mt-1 text-sm text-neutral-600">Order book, delivery schedule, airlines, and relationship scores.</p>
+          <p className="mt-1 text-sm text-[#a8b3c4]">Order book, delivery schedule, airlines, and relationship scores.</p>
         </div>
         <SubtabBar
           tabs={[
@@ -1799,7 +1799,7 @@ function OrdersTab({
       </div>
       {section === "book" && <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-sm">
-          <thead className="border-b border-[#d8ddd2] text-left text-neutral-600">
+          <thead className="border-b border-[#2a3445] text-left text-[#a8b3c4]">
             <tr>
               <th className="py-2 pr-4">Airline</th>
               <th className="py-2 pr-4">Model</th>
@@ -1816,7 +1816,7 @@ function OrdersTab({
             {orders.map((order) => {
               const model = player.aircraftModels.find((candidate) => candidate.id === order.modelId);
               return (
-                <tr key={order.id} className={`border-b border-[#edf0ea] ${focusedTarget.entityId === order.id ? "bg-[#eef8f5]" : ""}`}>
+                <tr key={order.id} className={`border-b border-[#222c3b] ${focusedTarget.entityId === order.id ? "bg-[#1d2f46]" : ""}`}>
                   <td className="py-3 pr-4">{gameState.airlines[order.airlineId]?.name}</td>
                   <td className="py-3 pr-4">{model?.name}</td>
                   <td className="py-3 pr-4">{order.quantity}</td>
@@ -1831,12 +1831,12 @@ function OrdersTab({
             })}
           </tbody>
         </table>
-        {orders.length === 0 && <p className="mt-4 text-sm text-neutral-600">No orders yet.</p>}
+        {orders.length === 0 && <p className="mt-4 text-sm text-[#a8b3c4]">No orders yet.</p>}
       </div>}
       {section === "calendar" && (
         <div className="mt-4 grid gap-3">
           {orders.length === 0 ? (
-            <p className="text-sm text-neutral-600">No deliveries scheduled.</p>
+            <p className="text-sm text-[#a8b3c4]">No deliveries scheduled.</p>
           ) : (
             orders
               .slice()
@@ -1847,11 +1847,11 @@ function OrdersTab({
                   <button
                     key={order.id}
                     onClick={() => navigate({ section: "orders", entityType: "order", entityId: order.id })}
-                    className="focus-ring rounded-lg border border-[#d8ddd2] p-4 text-left hover:bg-[#f8faf6]"
+                    className="focus-ring rounded-lg border border-[#2a3445] p-4 text-left hover:bg-[#182233]"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="font-semibold">Turn {order.deliveryStartTurn}: {model?.name ?? "Aircraft"} for {gameState.airlines[order.airlineId]?.name}</span>
-                      <span className="text-sm text-neutral-600">{Math.max(0, order.quantity - order.delivered)} remaining</span>
+                      <span className="text-sm text-[#a8b3c4]">{Math.max(0, order.quantity - order.delivered)} remaining</span>
                     </div>
                   </button>
                 );
@@ -1869,13 +1869,13 @@ function OrdersTab({
                 key={airline.id}
                 onClick={() => navigate({ section: "orders", entityType: "airline", entityId: airline.id })}
                 className={`focus-ring rounded-lg border p-4 text-left ${
-                  focusedTarget.entityId === airline.id ? "border-[#0f766e] bg-[#eef8f5]" : "border-[#d8ddd2] hover:bg-[#f8faf6]"
+                  focusedTarget.entityId === airline.id ? "border-[#f2b84b] bg-[#1d2f46]" : "border-[#2a3445] hover:bg-[#182233]"
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-semibold">{airline.name}</h3>
-                    <p className="mt-1 text-sm text-neutral-600">
+                    <p className="mt-1 text-sm text-[#a8b3c4]">
                       {airline.country ?? airline.region.replaceAll("-", " ")} · {AIRCRAFT_CATEGORIES[airline.preferredCategory].label}
                     </p>
                   </div>
@@ -1894,9 +1894,9 @@ function OrdersTab({
         </div>
       )}
       {section === "relationships" && (
-        <div className="mt-4 overflow-x-auto rounded-lg border border-[#d8ddd2]">
+        <div className="mt-4 overflow-x-auto rounded-lg border border-[#2a3445]">
           <table className="w-full min-w-[700px] border-collapse text-sm">
-            <thead className="border-b border-[#d8ddd2] bg-[#f8faf6] text-left text-neutral-600">
+            <thead className="border-b border-[#2a3445] bg-[#182233] text-left text-[#a8b3c4]">
               <tr>
                 <th className="px-3 py-2">Airline</th>
                 <th className="px-3 py-2">Region</th>
@@ -1914,7 +1914,7 @@ function OrdersTab({
                   const score = player.relationships[airline.id]?.score ?? airline.relationshipScore[player.id] ?? 50;
                   const airlineOrders = orders.filter((order) => order.airlineId === airline.id);
                   return (
-                    <tr key={airline.id} className="border-b border-[#edf0ea]">
+                    <tr key={airline.id} className="border-b border-[#222c3b]">
                       <td className="px-3 py-3 font-semibold">{airline.name}</td>
                       <td className="px-3 py-3">{airline.region.replaceAll("-", " ")}</td>
                       <td className="px-3 py-3">{score}</td>
@@ -1939,11 +1939,11 @@ function FinancesTab({ gameState }: { gameState: GameState }) {
     .slice(-18)
     .reverse();
   return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+    <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
       <h2 className="text-lg font-semibold">Finances</h2>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse text-sm">
-          <thead className="border-b border-[#d8ddd2] text-left text-neutral-600">
+          <thead className="border-b border-[#2a3445] text-left text-[#a8b3c4]">
             <tr>
               <th className="py-2 pr-4">Turn</th>
               <th className="py-2 pr-4">Revenue</th>
@@ -1957,7 +1957,7 @@ function FinancesTab({ gameState }: { gameState: GameState }) {
           </thead>
           <tbody>
             {reports.map((report) => (
-              <tr key={report.turn} className="border-b border-[#edf0ea]">
+              <tr key={report.turn} className="border-b border-[#222c3b]">
                 <td className="py-3 pr-4">{report.turn}</td>
                 <td className="py-3 pr-4">{formatMoney(report.aircraftRevenue)}</td>
                 <td className="py-3 pr-4">{formatMoney(report.salaries)}</td>
@@ -1970,7 +1970,7 @@ function FinancesTab({ gameState }: { gameState: GameState }) {
             ))}
           </tbody>
         </table>
-        {reports.length === 0 && <p className="mt-4 text-sm text-neutral-600">No monthly reports yet.</p>}
+        {reports.length === 0 && <p className="mt-4 text-sm text-[#a8b3c4]">No monthly reports yet.</p>}
       </div>
     </section>
   );
@@ -2026,11 +2026,11 @@ function InboxTab({
   }
 
   return (
-    <section className="rounded-lg border border-[#d8ddd2] bg-white p-5">
+    <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Company Email</h2>
-          <p className="mt-1 text-sm text-neutral-600">{unreadCount} unread · {actionCount} action-required · {emails.length} total messages</p>
+          <p className="mt-1 text-sm text-[#a8b3c4]">{unreadCount} unread · {actionCount} action-required · {emails.length} total messages</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <IconButton
@@ -2051,11 +2051,11 @@ function InboxTab({
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[230px_380px_1fr]">
-        <aside className="rounded-lg border border-[#d8ddd2] p-3">
+        <aside className="rounded-lg border border-[#2a3445] p-3">
           <label className="block text-sm font-medium">
             Search
-            <span className="mt-1 flex items-center gap-2 rounded-md border border-[#d8ddd2] px-2">
-              <Search size={15} className="text-neutral-500" />
+            <span className="mt-1 flex items-center gap-2 rounded-md border border-[#2a3445] px-2">
+              <Search size={15} className="text-[#8896aa]" />
               <input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
@@ -2069,7 +2069,7 @@ function InboxTab({
             <select
               value={sortMode}
               onChange={(event) => setSortMode(event.target.value as typeof sortMode)}
-              className="focus-ring mt-1 w-full rounded-md border border-[#d8ddd2] bg-white px-2 py-2"
+              className="focus-ring mt-1 w-full rounded-md border border-[#2a3445] bg-[#111827] px-2 py-2"
             >
               <option value="newest">Newest</option>
               <option value="priority">Priority</option>
@@ -2090,20 +2090,20 @@ function InboxTab({
                     setSelectedEmailId(null);
                   }}
                   className={`focus-ring flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition ${
-                    active ? "bg-[#0f766e] text-white" : "text-neutral-700 hover:bg-[#eef3ee]"
+                    active ? "bg-[#f2b84b] text-[#16110a]" : "text-[#d7deea] hover:bg-[#202b3d]"
                   }`}
                 >
                   <span>{item.label}</span>
-                  <span className={active ? "text-white/80" : "text-neutral-500"}>{count}</span>
+                  <span className={active ? "text-[#3b2a0e]" : "text-[#8896aa]"}>{count}</span>
                 </button>
               );
             })}
           </div>
         </aside>
 
-        <div className="max-h-[680px] overflow-y-auto rounded-lg border border-[#d8ddd2]">
+        <div className="max-h-[680px] overflow-y-auto rounded-lg border border-[#2a3445]">
           {visibleEmails.length === 0 ? (
-            <div className="p-4 text-sm text-neutral-600">No messages in this folder.</div>
+            <div className="p-4 text-sm text-[#a8b3c4]">No messages in this folder.</div>
           ) : (
             visibleEmails.map((email) => {
               const selected = selectedEmail?.id === email.id;
@@ -2112,25 +2112,25 @@ function InboxTab({
                 <button
                   key={email.id}
                   onClick={() => openEmail(email)}
-                  className={`focus-ring block w-full border-b border-[#edf0ea] px-4 py-3 text-left transition last:border-b-0 ${
-                    selected ? "bg-[#e8f2ef]" : email.read ? "bg-white hover:bg-[#f8faf6]" : "bg-[#fffaf0] hover:bg-[#fff6df]"
+                  className={`focus-ring block w-full border-b border-[#222c3b] px-4 py-3 text-left transition last:border-b-0 ${
+                    selected ? "bg-[#1d2f46]" : email.read ? "bg-[#111827] hover:bg-[#182233]" : "bg-[#211a0e] hover:bg-[#2a210f]"
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <Icon size={18} className={email.read ? "mt-0.5 text-neutral-500" : "mt-0.5 text-[#b7791f]"} />
+                    <Icon size={18} className={email.read ? "mt-0.5 text-[#8896aa]" : "mt-0.5 text-[#f2b84b]"} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-3">
                         <span className="truncate text-sm font-semibold">{email.from}</span>
-                        <span className="shrink-0 text-xs text-neutral-500">{formatGameDate(email.date)}</span>
+                        <span className="shrink-0 text-xs text-[#8896aa]">{formatGameDate(email.date)}</span>
                       </div>
                       <div className="mt-1 flex items-center gap-2">
                         <span className={`h-2 w-2 rounded-full ${emailCategoryDot(email.category)}`} />
-                        <span className={`truncate text-sm ${email.read ? "font-medium text-neutral-700" : "font-semibold text-[#17211c]"}`}>
+                        <span className={`truncate text-sm ${email.read ? "font-medium text-[#d7deea]" : "font-semibold text-[#e8eef8]"}`}>
                           {email.subject}
                         </span>
-                        {email.requiresAction && email.status === "open" && <AlertTriangle size={14} className="text-amber-600" />}
+                        {email.requiresAction && email.status === "open" && <AlertTriangle size={14} className="text-[#f2b84b]" />}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-sm text-neutral-600">{email.preview}</p>
+                      <p className="mt-1 line-clamp-2 text-sm text-[#a8b3c4]">{email.preview}</p>
                     </div>
                   </div>
                 </button>
@@ -2139,26 +2139,26 @@ function InboxTab({
           )}
         </div>
 
-        <div className="min-h-[460px] rounded-lg border border-[#d8ddd2] bg-[#f8faf6] p-5">
+        <div className="min-h-[460px] rounded-lg border border-[#2a3445] bg-[#182233] p-5">
           {!selectedEmail ? (
-            <div className="flex h-full items-center justify-center text-sm text-neutral-600">No email selected.</div>
+            <div className="flex h-full items-center justify-center text-sm text-[#a8b3c4]">No email selected.</div>
           ) : (
             <div>
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#d8ddd2] pb-4">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#2a3445] pb-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${emailPriorityClass(selectedEmail.priority)}`}>
                       {emailPriorityLabel(selectedEmail.priority)}
                     </span>
-                    <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-neutral-600">
+                    <span className="rounded-full bg-[#111827] px-2 py-1 text-xs font-semibold text-[#a8b3c4]">
                       {emailCategoryLabel(selectedEmail.category)}
                     </span>
-                    <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-neutral-600">
+                    <span className="rounded-full bg-[#111827] px-2 py-1 text-xs font-semibold text-[#a8b3c4]">
                       {selectedEmail.status}
                     </span>
                   </div>
                   <h3 className="mt-3 text-xl font-semibold tracking-normal">{selectedEmail.subject}</h3>
-                  <p className="mt-2 text-sm text-neutral-600">
+                  <p className="mt-2 text-sm text-[#a8b3c4]">
                     From {selectedEmail.from} to {selectedEmail.to} · {formatGameDate(selectedEmail.date)}
                   </p>
                 </div>
@@ -2171,19 +2171,19 @@ function InboxTab({
                   />
                 )}
               </div>
-              <div className="mt-5 space-y-4 text-sm leading-6 text-neutral-800">
+              <div className="mt-5 space-y-4 text-sm leading-6 text-[#e8eef8]">
                 {selectedEmail.body.map((paragraph, index) => (
                   <p key={`${selectedEmail.id}-${index}`}>{paragraph}</p>
                 ))}
               </div>
               {selectedEmail.actions.length > 0 && (
-                <div className="mt-6 flex flex-wrap gap-2 border-t border-[#d8ddd2] pt-4">
+                <div className="mt-6 flex flex-wrap gap-2 border-t border-[#2a3445] pt-4">
                   {selectedEmail.actions.map((action) => (
                     <button
                       key={action.id}
                       disabled={action.disabled}
                       onClick={() => runAction(selectedEmail, action.id)}
-                      className="focus-ring inline-flex h-10 items-center gap-2 rounded-md bg-[#0f766e] px-3 text-sm font-medium text-white transition hover:bg-[#0b5f59] disabled:cursor-not-allowed disabled:bg-neutral-300"
+                      className="focus-ring inline-flex h-10 items-center gap-2 rounded-md bg-[#f2b84b] px-3 text-sm font-medium text-[#16110a] transition hover:bg-[#d99a2b] disabled:cursor-not-allowed disabled:bg-[#384252]"
                       title={action.consequencePreview}
                     >
                       <FileText size={16} />
@@ -2193,7 +2193,7 @@ function InboxTab({
                   {selectedEmail.requiresAction && selectedEmail.status === "open" && (
                     <button
                       onClick={() => mutateGame((state) => acknowledgePlayerEmail(state, selectedEmail.id), "Email acknowledged.")}
-                      className="focus-ring inline-flex h-10 items-center gap-2 rounded-md border border-[#d8ddd2] bg-white px-3 text-sm font-medium text-neutral-700 transition hover:bg-[#eef3ee]"
+                      className="focus-ring inline-flex h-10 items-center gap-2 rounded-md border border-[#2a3445] bg-[#111827] px-3 text-sm font-medium text-[#d7deea] transition hover:bg-[#202b3d]"
                     >
                       <Check size={16} />
                       Acknowledge
@@ -2299,7 +2299,7 @@ function emailCategoryDot(category: GameEmailCategory): string {
     return "bg-violet-500";
   }
   if (category === "airline-relations" || category === "orders") {
-    return "bg-emerald-500";
+    return "bg-cyan-400";
   }
   if (category === "market-intelligence") {
     return "bg-amber-500";
@@ -2310,7 +2310,7 @@ function emailCategoryDot(category: GameEmailCategory): string {
   if (category === "competitors") {
     return "bg-stone-500";
   }
-  return "bg-[#0f766e]";
+  return "bg-[#f2b84b]";
 }
 
 function emailPriorityLabel(priority: GameEmailPriority): string {
@@ -2328,15 +2328,15 @@ function emailPriorityLabel(priority: GameEmailPriority): string {
 
 function emailPriorityClass(priority: GameEmailPriority): string {
   if (priority === "urgent") {
-    return "bg-red-100 text-red-800";
+    return "bg-[#3b1518] text-[#fecaca]";
   }
   if (priority === "important") {
-    return "bg-amber-100 text-amber-900";
+    return "bg-[#3a2a10] text-[#ffd48a]";
   }
   if (priority === "informational") {
-    return "bg-neutral-200 text-neutral-700";
+    return "bg-[#283348] text-[#d7deea]";
   }
-  return "bg-emerald-100 text-emerald-800";
+  return "bg-[#0f2c3d] text-[#7dd3fc]";
 }
 
 function SubtabBar({
@@ -2349,13 +2349,13 @@ function SubtabBar({
   setActive: (value: string) => void;
 }) {
   return (
-    <div className="flex max-w-full gap-1 overflow-x-auto rounded-md border border-[#d8ddd2] bg-[#f8faf6] p-1">
+    <div className="flex max-w-full gap-1 overflow-x-auto rounded-md border border-[#2a3445] bg-[#182233] p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => setActive(tab.id)}
           className={`focus-ring min-w-fit rounded px-3 py-1.5 text-sm font-medium transition ${
-            active === tab.id ? "bg-[#0f766e] text-white" : "text-neutral-700 hover:bg-white"
+            active === tab.id ? "bg-[#f2b84b] text-[#16110a]" : "text-[#d7deea] hover:bg-[#111827]"
           }`}
         >
           {tab.label}
@@ -2380,11 +2380,11 @@ function WorkforcePanel({
 }) {
   const idle = Math.max(0, group.headcount - assigned);
   return (
-    <div className="rounded-lg border border-[#d8ddd2] p-4">
+    <div className="rounded-lg border border-[#2a3445] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold">{title}</h3>
-          <p className="mt-1 text-sm text-neutral-600">{group.headcount.toLocaleString()} employed · {idle.toLocaleString()} idle</p>
+          <p className="mt-1 text-sm text-[#a8b3c4]">{group.headcount.toLocaleString()} employed · {idle.toLocaleString()} idle</p>
         </div>
         <div className="flex gap-2">
           <IconButton title="Hire 25" icon={Plus} label="25" onClick={() => mutateGame((state) => changeEmployeeHeadcount(state, role, 25), "Hiring complete.")} />
@@ -2403,8 +2403,8 @@ function WorkforcePanel({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-[#f4f5f1] px-3 py-2">
-      <div className="text-xs font-medium uppercase text-neutral-500">{label}</div>
+    <div className="rounded-md bg-[#080b11] px-3 py-2">
+      <div className="text-xs font-medium uppercase text-[#8896aa]">{label}</div>
       <div className="mt-1 text-base font-semibold">{value}</div>
     </div>
   );
@@ -2429,7 +2429,7 @@ function RangeControl({
     <label className="block text-sm font-medium">
       <span className="flex items-center justify-between gap-3">
         <span>{label}</span>
-        <span className="text-neutral-600">{value}</span>
+        <span className="text-[#a8b3c4]">{value}</span>
       </span>
       <input
         type="range"
@@ -2438,7 +2438,7 @@ function RangeControl({
         max={max}
         step={step}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-2 w-full accent-[#0f766e]"
+        className="mt-2 w-full accent-[#f2b84b]"
       />
     </label>
   );
@@ -2447,8 +2447,8 @@ function RangeControl({
 function ProgressBar({ value, compact = false }: { value: number; compact?: boolean }) {
   const normalized = Math.max(0, Math.min(100, value));
   return (
-    <div className={`${compact ? "mt-2 h-1.5" : "mt-3 h-2"} overflow-hidden rounded bg-[#e8ece4]`}>
-      <div className="h-full bg-[#0f766e]" style={{ width: `${normalized}%` }} />
+    <div className={`${compact ? "mt-2 h-1.5" : "mt-3 h-2"} overflow-hidden rounded bg-[#263247]`}>
+      <div className="h-full bg-[#f2b84b]" style={{ width: `${normalized}%` }} />
     </div>
   );
 }
@@ -2456,13 +2456,13 @@ function ProgressBar({ value, compact = false }: { value: number; compact?: bool
 function TextList({ title, items, empty, warning = false }: { title: string; items: string[]; empty: string; warning?: boolean }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-neutral-700">{title}</h3>
+      <h3 className="text-sm font-semibold text-[#d7deea]">{title}</h3>
       <div className="mt-2 space-y-2">
         {items.length === 0 ? (
-          <p className="text-sm text-neutral-600">{empty}</p>
+          <p className="text-sm text-[#a8b3c4]">{empty}</p>
         ) : (
           items.map((item) => (
-            <p key={item} className={`rounded-md border px-3 py-2 text-sm ${warning ? "border-amber-200 bg-amber-50 text-amber-900" : "border-[#d8ddd2] bg-[#f8faf6] text-neutral-700"}`}>
+            <p key={item} className={`rounded-md border px-3 py-2 text-sm ${warning ? "border-[#7c5a1e] bg-[#2a1d0b] text-[#ffd48a]" : "border-[#2a3445] bg-[#182233] text-[#d7deea]"}`}>
               {item}
             </p>
           ))
@@ -2488,10 +2488,10 @@ function IconButton({
   danger?: boolean;
 }) {
   const className = primary
-    ? "bg-[#0f766e] text-white hover:bg-[#0b5f59]"
+    ? "bg-[#f2b84b] text-[#16110a] hover:bg-[#d99a2b]"
     : danger
-      ? "border border-red-200 bg-white text-red-700 hover:bg-red-50"
-      : "border border-[#d8ddd2] bg-white text-neutral-700 hover:bg-[#eef3ee]";
+      ? "border border-[#7f1d1d] bg-[#111827] text-[#fca5a5] hover:bg-[#3b1518]"
+      : "border border-[#2a3445] bg-[#111827] text-[#d7deea] hover:bg-[#202b3d]";
 
   return (
     <button title={title} onClick={onClick} className={`focus-ring inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium transition ${className}`}>
@@ -2504,15 +2504,15 @@ function IconButton({
 function AircraftPlanform() {
   return (
     <svg viewBox="0 0 96 64" className="h-14 w-20 shrink-0" role="img" aria-label="Aircraft silhouette">
-      <rect x="8" y="26" width="76" height="10" rx="5" fill="#0f766e" />
+      <rect x="8" y="26" width="76" height="10" rx="5" fill="#38bdf8" />
       <path d="M43 12h8l13 18H30z" fill="#f2b84b" />
       <path d="M44 52h8l9-18H35z" fill="#b9c7bd" />
-      <path d="M74 22l14-10v14z" fill="#0b5f59" />
-      <circle cx="24" cy="31" r="2" fill="#eef8f6" />
-      <circle cx="34" cy="31" r="2" fill="#eef8f6" />
-      <circle cx="44" cy="31" r="2" fill="#eef8f6" />
-      <circle cx="54" cy="31" r="2" fill="#eef8f6" />
-      <circle cx="64" cy="31" r="2" fill="#eef8f6" />
+      <path d="M74 22l14-10v14z" fill="#f2b84b" />
+      <circle cx="24" cy="31" r="2" fill="#e8eef8" />
+      <circle cx="34" cy="31" r="2" fill="#e8eef8" />
+      <circle cx="44" cy="31" r="2" fill="#e8eef8" />
+      <circle cx="54" cy="31" r="2" fill="#e8eef8" />
+      <circle cx="64" cy="31" r="2" fill="#e8eef8" />
     </svg>
   );
 }
@@ -2538,46 +2538,46 @@ function AircraftSpecimen({ input }: { input: AircraftDesignInput }) {
   const enginePositions = sideEnginePositions(input.category, engineCount, wingRootX, wingTipX, tailX, centerY);
 
   return (
-    <div className="flex min-h-72 w-full min-w-64 items-center justify-center rounded-lg border border-[#d8ddd2] bg-[#eef3f0] p-3">
+    <div className="flex min-h-72 w-full min-w-64 items-center justify-center rounded-lg border border-[#2a3445] bg-[#0c1320] p-3">
       <svg width="560" height="280" viewBox="0 0 560 280" role="img" aria-label={`${input.name} aircraft drawing`}>
         <defs>
           <linearGradient id="previewSky" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stopColor="#f8fbf8" />
-            <stop offset="100%" stopColor="#e5ece8" />
+            <stop offset="0%" stopColor="#0d1624" />
+            <stop offset="100%" stopColor="#111827" />
           </linearGradient>
           <linearGradient id="fuselagePaint" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="45%" stopColor="#e9f0ec" />
-            <stop offset="100%" stopColor="#c6d2cc" />
+            <stop offset="0%" stopColor="#d9e4f2" />
+            <stop offset="48%" stopColor="#8ca2b6" />
+            <stop offset="100%" stopColor="#536474" />
           </linearGradient>
           <linearGradient id="wingPaint" x1="0" x2="1">
-            <stop offset="0%" stopColor="#82998f" />
-            <stop offset="58%" stopColor="#d6b45d" />
-            <stop offset="100%" stopColor="#f1d988" />
+            <stop offset="0%" stopColor="#273449" />
+            <stop offset="58%" stopColor="#b78531" />
+            <stop offset="100%" stopColor="#f2b84b" />
           </linearGradient>
           <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
-            <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#25312d" floodOpacity="0.18" />
+            <feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#020617" floodOpacity="0.5" />
           </filter>
         </defs>
         <rect x="0" y="0" width="560" height="280" rx="14" fill="url(#previewSky)" />
         {Array.from({ length: 11 }, (_, index) => (
-          <path key={`grid-h-${index}`} d={`M 26 ${36 + index * 21} H 534`} stroke="#d8e0dc" strokeWidth="1" opacity={index % 2 === 0 ? 0.72 : 0.34} />
+          <path key={`grid-h-${index}`} d={`M 26 ${36 + index * 21} H 534`} stroke="#263247" strokeWidth="1" opacity={index % 2 === 0 ? 0.78 : 0.38} />
         ))}
         {Array.from({ length: 13 }, (_, index) => (
-          <path key={`grid-v-${index}`} d={`M ${44 + index * 39} 24 V 246`} stroke="#d8e0dc" strokeWidth="1" opacity={0.28} />
+          <path key={`grid-v-${index}`} d={`M ${44 + index * 39} 24 V 246`} stroke="#263247" strokeWidth="1" opacity={0.38} />
         ))}
-        <ellipse cx="285" cy="218" rx={Math.max(145, length * 0.38)} ry="18" fill="#26312e" opacity="0.09" />
+        <ellipse cx="285" cy="218" rx={Math.max(145, length * 0.38)} ry="18" fill="#020617" opacity="0.38" />
         <g filter="url(#softShadow)">
           <path
             d={`M ${wingRootX - 24} ${centerY + 9} L ${wingRootX + 38 - sweep} ${centerY + 2} L ${wingTipX} ${centerY + wingDrop} L ${wingTipX - 62} ${centerY + wingDrop + 15} L ${wingRootX - 42} ${centerY + 19} Z`}
             fill="url(#wingPaint)"
-            stroke="#6c8177"
+            stroke="#5f7184"
             strokeWidth="2"
           />
           {hasWinglets && (
             <>
-              <path d={`M ${wingTipX - 4} ${centerY + wingDrop + 1} l 14 -30`} stroke="#0f766e" strokeWidth="6" strokeLinecap="round" />
-              <path d={`M ${wingTipX - 54} ${centerY + wingDrop + 13} l 12 -20`} stroke="#2f7d73" strokeWidth="4" strokeLinecap="round" opacity="0.72" />
+              <path d={`M ${wingTipX - 4} ${centerY + wingDrop + 1} l 14 -30`} stroke="#38bdf8" strokeWidth="6" strokeLinecap="round" />
+              <path d={`M ${wingTipX - 54} ${centerY + wingDrop + 13} l 12 -20`} stroke="#a78bfa" strokeWidth="4" strokeLinecap="round" opacity="0.72" />
             </>
           )}
           <path
@@ -2587,14 +2587,14 @@ function AircraftSpecimen({ input }: { input: AircraftDesignInput }) {
               C ${tailX + 19} ${centerY + 18}, ${tailX - 31} ${bottomY + 8}, ${noseX + 30} ${bottomY + 6}
               C ${noseX + 5} ${bottomY + 5}, ${noseX - 10} ${centerY + 13}, ${noseX} ${centerY} Z`}
             fill="url(#fuselagePaint)"
-            stroke="#52655e"
+            stroke="#d9e4f2"
             strokeWidth="2.5"
           />
-          <path d={`M ${noseX + 18} ${centerY - 3} C ${noseX + 24} ${topY - 7}, ${noseX + 48} ${topY - 8}, ${noseX + 68} ${topY - 4}`} fill="none" stroke="#26312e" strokeWidth="2" opacity="0.5" />
-          <path d={`M ${tailX - 56} ${topY + 6} L ${tailX - 18} ${topY - 76} L ${tailX + 5} ${topY + 4} Z`} fill="#0f766e" stroke="#0b5f59" strokeWidth="2" />
-          <path d={`M ${tailX - 62} ${centerY + 5} L ${tailX + 8} ${centerY - 16} L ${tailX - 16} ${centerY + 13} Z`} fill="#9fb4aa" stroke="#6c8177" strokeWidth="1.5" />
-          <path d={`M ${noseX + 78} ${centerY + 5} H ${tailX - 70}`} stroke="#d6b45d" strokeWidth="6" strokeLinecap="round" />
-          <path d={`M ${noseX + 80} ${centerY + 1} H ${tailX - 72}`} stroke="#fff6ce" strokeWidth="2" strokeLinecap="round" opacity="0.72" />
+          <path d={`M ${noseX + 18} ${centerY - 3} C ${noseX + 24} ${topY - 7}, ${noseX + 48} ${topY - 8}, ${noseX + 68} ${topY - 4}`} fill="none" stroke="#111827" strokeWidth="2" opacity="0.58" />
+          <path d={`M ${tailX - 56} ${topY + 6} L ${tailX - 18} ${topY - 76} L ${tailX + 5} ${topY + 4} Z`} fill="#38bdf8" stroke="#f2b84b" strokeWidth="2" />
+          <path d={`M ${tailX - 62} ${centerY + 5} L ${tailX + 8} ${centerY - 16} L ${tailX - 16} ${centerY + 13} Z`} fill="#5f7184" stroke="#b7c6d8" strokeWidth="1.5" />
+          <path d={`M ${noseX + 78} ${centerY + 5} H ${tailX - 70}`} stroke="#f2b84b" strokeWidth="6" strokeLinecap="round" />
+          <path d={`M ${noseX + 80} ${centerY + 1} H ${tailX - 72}`} stroke="#ffe2a1" strokeWidth="2" strokeLinecap="round" opacity="0.72" />
           {Array.from({ length: windowCount }, (_, index) => {
             const spacing = (length - 132) / Math.max(1, windowCount - 1);
             return (
@@ -2605,19 +2605,19 @@ function AircraftSpecimen({ input }: { input: AircraftDesignInput }) {
                 width="7"
                 height="5"
                 rx="1.5"
-                fill="#2f7d73"
+                fill="#38bdf8"
                 opacity="0.88"
               />
             );
           })}
-          <rect x={noseX + 56} y={topY + 13} width="10" height={fuselageHeight - 11} rx="2" fill="none" stroke="#52655e" strokeWidth="1.2" opacity="0.7" />
-          <rect x={tailX - 92} y={topY + 13} width="10" height={fuselageHeight - 13} rx="2" fill="none" stroke="#52655e" strokeWidth="1.2" opacity="0.62" />
+          <rect x={noseX + 56} y={topY + 13} width="10" height={fuselageHeight - 11} rx="2" fill="none" stroke="#263247" strokeWidth="1.2" opacity="0.78" />
+          <rect x={tailX - 92} y={topY + 13} width="10" height={fuselageHeight - 13} rx="2" fill="none" stroke="#263247" strokeWidth="1.2" opacity="0.66" />
           {enginePositions.map((engine, index) => (
             <g key={index}>
-              <path d={`M ${engine.x - 4} ${engine.y - 22} L ${engine.x - 8} ${engine.y - 8}`} stroke="#52655e" strokeWidth="3" strokeLinecap="round" />
-              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx} ry={engine.ry} fill="#e7eee9" stroke="#d6b45d" strokeWidth="4" />
-              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx - 7} ry={engine.ry - 5} fill="#26312e" />
-              <ellipse cx={engine.x - 3} cy={engine.y - 2} rx={Math.max(3, engine.rx - 13)} ry={Math.max(2, engine.ry - 9)} fill="#64746e" opacity="0.62" />
+              <path d={`M ${engine.x - 4} ${engine.y - 22} L ${engine.x - 8} ${engine.y - 8}`} stroke="#536474" strokeWidth="3" strokeLinecap="round" />
+              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx} ry={engine.ry} fill="#b7c6d8" stroke="#f2b84b" strokeWidth="4" />
+              <ellipse cx={engine.x} cy={engine.y} rx={engine.rx - 7} ry={engine.ry - 5} fill="#111827" />
+              <ellipse cx={engine.x - 3} cy={engine.y - 2} rx={Math.max(3, engine.rx - 13)} ry={Math.max(2, engine.ry - 9)} fill="#38bdf8" opacity="0.55" />
             </g>
           ))}
         </g>

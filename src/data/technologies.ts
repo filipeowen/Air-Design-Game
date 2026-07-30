@@ -23,13 +23,13 @@ export const RESEARCH_ERAS: ResearchEraDefinition[] = [
 ];
 
 export const TECHNOLOGY_BRANCHES: TechnologyBranchDefinition[] = [
-  { id: "propulsion", label: "Propulsion", accent: "#2f7d73" },
-  { id: "aerodynamics", label: "Aerodynamics and Wing Design", accent: "#5d7cbe" },
-  { id: "structures", label: "Structures and Materials", accent: "#a66f2b" },
-  { id: "avionics", label: "Avionics and Flight Controls", accent: "#6f5fb5" },
-  { id: "manufacturing", label: "Manufacturing and Industrial Systems", accent: "#55735d" },
-  { id: "safety", label: "Reliability, Safety, and Certification", accent: "#b06052" },
-  { id: "cabin-operations", label: "Cabin, Airline Economics, and Operations", accent: "#9a6b91" }
+  { id: "propulsion", label: "Propulsion", accent: "#38bdf8" },
+  { id: "aerodynamics", label: "Aerodynamics and Wing Design", accent: "#818cf8" },
+  { id: "structures", label: "Structures and Materials", accent: "#f2b84b" },
+  { id: "avionics", label: "Avionics and Flight Controls", accent: "#a78bfa" },
+  { id: "manufacturing", label: "Manufacturing and Industrial Systems", accent: "#f97316" },
+  { id: "safety", label: "Reliability, Safety, and Certification", accent: "#fb7185" },
+  { id: "cabin-operations", label: "Cabin, Airline Economics, and Operations", accent: "#e879f9" }
 ];
 
 interface RawTechnology {
