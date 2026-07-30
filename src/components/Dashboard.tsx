@@ -397,7 +397,7 @@ export function Dashboard() {
   return (
     <main className="min-h-screen bg-[#080b11] text-[#e8eef8]">
       <header className="border-b border-[#2a3445] bg-[#111827]">
-        <div className="mx-auto grid max-w-7xl gap-4 px-4 py-4 xl:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.55fr)_auto] xl:items-center">
+        <div className="mx-auto grid max-w-[1720px] gap-4 px-4 py-4 xl:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.55fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <AircraftPlanform />
             <div className="min-w-0">
@@ -427,7 +427,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-4 px-4 py-4 lg:grid-cols-[220px_1fr]">
+      <div className="mx-auto grid max-w-[1720px] gap-4 px-4 py-4 lg:grid-cols-[220px_minmax(0,1fr)]">
         <nav className="flex gap-2 overflow-x-auto rounded-lg border border-[#2a3445] bg-[#111827] p-2 lg:block lg:overflow-visible">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -1085,14 +1085,14 @@ function AircraftTab({
             <NumberControl label="Galley area m2" value={designInput.cabin.galleySizeM2} min={1.5} max={18} step={0.1} onChange={(value) => updateCabin("galleySizeM2", value)} />
             <NumberControl label="Crew rest m2" value={designInput.cabin.crewRestAreaM2} min={0} max={12} step={0.1} onChange={(value) => updateCabin("crewRestAreaM2", value)} />
           </div>
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid gap-3 min-[1500px]:grid-cols-2">
             {designInput.cabin.zones.map((zone, index) => (
-              <div key={zone.cabinClass} className="rounded-lg border border-[#2a3445] bg-[#0b111c] p-4">
+              <div key={zone.cabinClass} className="min-w-0 rounded-lg border border-[#2a3445] bg-[#0b111c] p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="font-semibold">{CABIN_LABELS[zone.cabinClass]}</h3>
-                  <span className="text-sm text-[#a8b3c4]">{cabinGeometry.zoneCapacities[zone.cabinClass] ?? 0} seats</span>
+                  <h3 className="min-w-0 text-wrap font-semibold leading-6">{CABIN_LABELS[zone.cabinClass]}</h3>
+                  <span className="shrink-0 text-sm text-[#a8b3c4]">{cabinGeometry.zoneCapacities[zone.cabinClass] ?? 0} seats</span>
                 </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 min-[1500px]:grid-cols-1 min-[1640px]:grid-cols-2">
                   <NumberControl label="Zone length m" value={zone.zoneLengthM} min={0} max={42} step={0.1} onChange={(value) => updateZone(index, { zoneLengthM: value })} />
                   <NumberControl label="Seats across" value={zone.seatsAcross} min={1} max={designInput.category === "wide-body" ? 10 : designInput.category === "narrow-body" ? 6 : 5} step={1} onChange={(value) => updateZone(index, { seatsAcross: value })} />
                   <NumberControl label="Seat width m" value={zone.seatWidthM} min={0.43} max={0.72} step={0.01} onChange={(value) => updateZone(index, { seatWidthM: value })} />
@@ -1354,8 +1354,8 @@ function AircraftTab({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_390px]">
-      <section className="rounded-lg border border-[#2a3445] bg-[#0b111c] p-3">
+    <div className="grid gap-4 xl:grid-cols-[200px_minmax(0,1fr)]">
+      <section className="min-w-0 rounded-lg border border-[#2a3445] bg-[#0b111c] p-3">
         <div className="px-2 pb-3">
           <h2 className="text-sm font-semibold uppercase text-[#a8b3c4]">Design Studio</h2>
           <p className="mt-1 text-xs leading-5 text-[#748095]">Stage-based aircraft development</p>
@@ -1383,7 +1383,7 @@ function AircraftTab({
         </div>
       </section>
 
-      <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-5">
+      <section className="min-w-0 rounded-lg border border-[#2a3445] bg-[#111827] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">{DESIGN_STAGES.find((candidate) => candidate.id === stage)?.label}</h2>
@@ -1400,7 +1400,7 @@ function AircraftTab({
         <div className="mt-5">{renderStage()}</div>
       </section>
 
-      <section className="space-y-4">
+      <section className="min-w-0 space-y-4 xl:col-start-2">
         <AircraftStudioVisual design={designInput} performance={designPreview} cabinGeometry={cabinGeometry} />
         <section className="rounded-lg border border-[#2a3445] bg-[#111827] p-4">
           <div className="flex items-start justify-between gap-3">
@@ -1486,13 +1486,13 @@ function ValidationList({ items, compact = false }: { items: AircraftCalculatedP
       {items.map((item) => (
         <div
           key={`${item.stage}-${item.title}`}
-          className={`rounded-md border px-3 py-2 text-sm ${
+          className={`min-w-0 rounded-md border px-3 py-2 text-sm ${
             item.level === "invalid" ? "border-[#7f1d1d] bg-[#2a1014] text-[#fecaca]" : "border-[#7c5a1e] bg-[#2a1d0b] text-[#ffd48a]"
           }`}
         >
-          <div className="font-semibold">{item.title}</div>
-          {!compact && <p className="mt-1 text-[#d7deea]">{item.message}</p>}
-          <p className={`${compact ? "mt-1" : "mt-2"} text-xs text-[#a8b3c4]`}>{item.fix}</p>
+          <div className="text-wrap font-semibold leading-5">{item.title}</div>
+          {!compact && <p className="mt-1 text-wrap leading-5 text-[#d7deea]">{item.message}</p>}
+          <p className={`${compact ? "mt-1" : "mt-2"} text-wrap text-xs leading-5 text-[#a8b3c4]`}>{item.fix}</p>
         </div>
       ))}
     </div>
@@ -2841,9 +2841,9 @@ function WorkforcePanel({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-[#080b11] px-3 py-2">
-      <div className="text-xs font-medium uppercase text-[#8896aa]">{label}</div>
-      <div className="mt-1 text-base font-semibold">{value}</div>
+    <div className="min-w-0 rounded-md bg-[#080b11] px-3 py-2">
+      <div className="text-wrap text-xs font-medium uppercase leading-4 text-[#8896aa]">{label}</div>
+      <div className="mt-1 break-words text-base font-semibold leading-5">{value}</div>
     </div>
   );
 }
@@ -2905,22 +2905,14 @@ function NumberControl({
   step: number;
   onChange: (value: number) => void;
 }) {
+  const displayValue = Number.isInteger(value) ? value.toLocaleString() : value.toFixed(step < 0.01 ? 3 : step < 1 ? 2 : 0);
   return (
-    <label className="block text-sm font-medium">
-      <span className="flex items-center justify-between gap-3">
-        <span>{label}</span>
-        <span className="text-[#a8b3c4]">{Number.isInteger(value) ? value.toLocaleString() : value.toFixed(step < 0.01 ? 3 : step < 1 ? 2 : 0)}</span>
+    <label className="block min-w-0 text-sm font-medium">
+      <span className="flex min-w-0 items-start justify-between gap-3">
+        <span className="min-w-0 text-wrap leading-5">{label}</span>
+        <span className="shrink-0 text-right text-xs leading-5 text-[#a8b3c4]">{displayValue}</span>
       </span>
-      <div className="mt-2 grid grid-cols-[1fr_84px] gap-2">
-        <input
-          type="range"
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={(event) => onChange(Number(event.target.value))}
-          className="w-full accent-[#f2b84b]"
-        />
+      <div className="mt-2 space-y-2">
         <input
           type="number"
           value={value}
@@ -2928,7 +2920,16 @@ function NumberControl({
           max={max}
           step={step}
           onChange={(event) => onChange(Number(event.target.value))}
-          className="focus-ring min-w-0 rounded-md border border-[#2a3445] bg-[#080b11] px-2 py-1 text-right text-sm text-[#e8eef8]"
+          className="focus-ring h-9 w-full min-w-0 rounded-md border border-[#2a3445] bg-[#080b11] px-2 py-1 text-right text-sm text-[#e8eef8]"
+        />
+        <input
+          type="range"
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="block w-full accent-[#f2b84b]"
         />
       </div>
     </label>
