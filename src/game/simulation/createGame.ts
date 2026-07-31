@@ -10,6 +10,7 @@ import { createAircraftProgram } from "@/game/development/process";
 import { createOpeningEmails } from "@/game/email/messages";
 import { createEmployeeGroup } from "@/game/employees/defaults";
 import { createProductionLine } from "@/game/factories/process";
+import { seedHistoricalAircraftThroughYear } from "@/game/simulation/historicalAircraft";
 import type {
   AircraftCategory,
   AircraftDesign,
@@ -59,12 +60,16 @@ export function createNewGame(options: NewGameOptions = {}): GameState {
   }
 
   for (const competitor of competitors) {
-    addLegacyModel(competitor, "narrow-body", 0, 1970, contentSettings.namingMode);
-    if (competitor.strategy.preferredSegments.includes("regional-jet")) {
-      addLegacyModel(competitor, "regional-jet", 0, 1970, contentSettings.namingMode);
-    }
-    if (competitor.strategy.preferredSegments.includes("wide-body")) {
-      addLegacyModel(competitor, "wide-body", 0, 1970, contentSettings.namingMode);
+    if (contentSettings.namingMode === "real_world") {
+      seedHistoricalAircraftThroughYear(competitor, 1970, 0, contentSettings.namingMode);
+    } else {
+      addLegacyModel(competitor, "narrow-body", 0, 1970, contentSettings.namingMode);
+      if (competitor.strategy.preferredSegments.includes("regional-jet")) {
+        addLegacyModel(competitor, "regional-jet", 0, 1970, contentSettings.namingMode);
+      }
+      if (competitor.strategy.preferredSegments.includes("wide-body")) {
+        addLegacyModel(competitor, "wide-body", 0, 1970, contentSettings.namingMode);
+      }
     }
   }
 

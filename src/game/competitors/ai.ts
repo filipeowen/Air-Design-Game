@@ -129,12 +129,16 @@ function launchProgramIfUseful(
   }
 
   const nameSelection = getAircraftNameSelection(
-    manufacturer.id,
+    manufacturer.identityId ?? manufacturer.id,
     category,
     year,
     contentSettings.namingMode,
     manufacturer.aircraftModels.map((model) => model.name)
   );
+  if (contentSettings.namingMode === "real_world" && !nameSelection.identityId) {
+    return;
+  }
+
   const input = createDefaultDesignInput(category, nameSelection.displayName);
   input.passengerCapacity = Math.round(input.passengerCapacity * rng.nextBetween(0.9, 1.12));
   input.rangeNm = Math.round(input.rangeNm * rng.nextBetween(0.92, 1.16));

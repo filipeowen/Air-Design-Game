@@ -69,7 +69,10 @@ export function createBaseManufacturer(
   identityId = id
 ): Manufacturer {
   const identity = getManufacturerIdentity(identityId, mode);
+  const resolvedStrategy = strategy({ preferredRegions, ...strategyOverrides });
   const homeCountry = resolveFactoryCountry(identity.country, preferredRegions[0] ?? "north-america");
+  const startingFactorySize = resolvedStrategy.preferredSegments.includes("wide-body") ? "large" : "medium";
+  const startingFactoryCapacity = startingFactorySize === "large" ? 24 : 14;
   return {
     id,
     identityId: identity.id,
@@ -83,7 +86,7 @@ export function createBaseManufacturer(
       factoryWorkers: createEmployeeGroup("factoryWorkers", 6_500, 62),
       salesStaff: createEmployeeGroup("salesStaff", 580, 60)
     },
-    factories: [factory(`${id}-works`, id, homeCountry.region, "medium", 14, homeCountry.name)],
+    factories: [factory(`${id}-works`, id, homeCountry.region, startingFactorySize, startingFactoryCapacity, homeCountry.name)],
     aircraftDesigns: [],
     aircraftPrograms: [],
     aircraftModels: [],
@@ -91,7 +94,7 @@ export function createBaseManufacturer(
     researchProjects: [],
     unlockedTechnologyIds: ["improved-aluminum-alloys", "high-bypass-turbofans"],
     relationships: {},
-    strategy: strategy({ preferredRegions, ...strategyOverrides }),
+    strategy: resolvedStrategy,
     ambitions: [],
     marketShare: {
       "regional-jet": 0,
@@ -123,9 +126,9 @@ export function createStartingCompetitors(mode: NamingMode = GAME_CONTENT_SETTIN
       riskTolerance: 48,
       customerRelationshipFocus: 67,
       productionConservatism: 58,
-      preferredSegments: ["regional-jet", "narrow-body"]
+      preferredSegments: ["wide-body"]
     }, mode),
-    createBaseManufacturer("meridian-aviation", 3_900_000_000, ["europe"], {
+    createBaseManufacturer("meridian-aviation", 30_000_000_000, ["europe"], {
       innovationPreference: 70,
       riskTolerance: 43,
       governmentContractPreference: 70,
@@ -135,7 +138,7 @@ export function createStartingCompetitors(mode: NamingMode = GAME_CONTENT_SETTIN
       innovationPreference: 64,
       debtTolerance: 62,
       customerRelationshipFocus: 62,
-      preferredSegments: ["narrow-body", "wide-body"],
+      preferredSegments: ["regional-jet", "narrow-body"],
       preferredRegions: ["europe", "middle-east"]
     }, mode),
     createBaseManufacturer("noord-aviation", 1_600_000_000, ["europe"], {
@@ -143,7 +146,7 @@ export function createStartingCompetitors(mode: NamingMode = GAME_CONTENT_SETTIN
       productionConservatism: 66,
       preferredSegments: ["regional-jet"]
     }, mode),
-    createBaseManufacturer("atlantico-aeronautics", 900_000_000, ["latin-america"], {
+    createBaseManufacturer("atlantico-aeronautics", 3_200_000_000, ["latin-america"], {
       innovationPreference: 48,
       priceAggressiveness: 66,
       riskTolerance: 45,
@@ -154,6 +157,25 @@ export function createStartingCompetitors(mode: NamingMode = GAME_CONTENT_SETTIN
       governmentContractPreference: 64,
       longTermPlanning: 72,
       preferredSegments: ["regional-jet", "narrow-body"]
+    }, mode),
+    createBaseManufacturer("ilyushin", 2_100_000_000, ["soviet-market"], {
+      innovationPreference: 54,
+      governmentContractPreference: 70,
+      productionConservatism: 62,
+      preferredSegments: ["narrow-body", "wide-body"]
+    }, mode),
+    createBaseManufacturer("sud-aviation", 2_000_000_000, ["europe"], {
+      innovationPreference: 58,
+      customerRelationshipFocus: 58,
+      priceAggressiveness: 52,
+      preferredSegments: ["regional-jet"]
+    }, mode),
+    createBaseManufacturer("bombardier", 35_000_000_000, ["north-america"], {
+      innovationPreference: 52,
+      riskTolerance: 48,
+      priceAggressiveness: 58,
+      preferredSegments: ["regional-jet"],
+      preferredRegions: ["north-america", "europe"]
     }, mode)
   ];
 }

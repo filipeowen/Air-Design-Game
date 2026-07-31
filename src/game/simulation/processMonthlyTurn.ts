@@ -7,6 +7,7 @@ import { processFactoryConstruction, processFactoryExpenses, processProduction }
 import { processMarketAndEvents } from "@/game/market/events";
 import { processAirlineOrders, processProgressPayments } from "@/game/orders/airlineDecisions";
 import { processResearch } from "@/game/research/process";
+import { releaseHistoricalAircraftForCompetitors } from "@/game/simulation/historicalAircraft";
 import type {
   AircraftCategory,
   GameContentSettings,
@@ -68,6 +69,13 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
     deliveries.push(...production.deliveries);
   }
 
+  const historicalLaunches = releaseHistoricalAircraftForCompetitors(
+    next.manufacturers,
+    date.year,
+    turn,
+    next.contentSettings
+  );
+
   const airlineResult = processAirlineOrders(
     next.manufacturers,
     next.airlines,
@@ -118,7 +126,7 @@ export function processMonthlyTurn(gameState: GameState): TurnResult {
     developmentUpdates,
     orders: airlineResult.orders,
     deliveries,
-    competitorActions: competitorResult.actions,
+    competitorActions: [...historicalLaunches, ...competitorResult.actions],
     events: marketResult.events,
     warnings
   };

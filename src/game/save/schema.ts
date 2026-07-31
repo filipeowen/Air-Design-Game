@@ -9,6 +9,7 @@ import {
   getManufacturerIdentity
 } from "@/data/identities";
 import { ensureEmailInbox } from "@/game/email/messages";
+import { seedHistoricalAircraftThroughYear } from "@/game/simulation/historicalAircraft";
 import type { GameContentSettings, GameState, SaveFile } from "@/game/types";
 
 export const saveFileSchema = z.object({
@@ -38,6 +39,8 @@ export function parseSaveFile(value: string): SaveFile {
   const settings = ensureContentSettings(saveFile.gameState);
   ensureSimulationEventHistory(saveFile.gameState);
   ensureIdentityNames(saveFile.gameState, settings);
+  ensureHistoricalAircraftLineups(saveFile.gameState, settings);
+  retireGeneratedRealWorldPlaceholders(saveFile.gameState, settings);
   ensureEmailInbox(saveFile.gameState);
   return saveFile;
 }
@@ -45,7 +48,7 @@ export function parseSaveFile(value: string): SaveFile {
 export function ensureContentSettings(state: GameState): GameContentSettings {
   const candidate = state as GameState & { contentSettings?: GameContentSettings };
   candidate.contentSettings ??= { ...GAME_CONTENT_SETTINGS };
-  candidate.contentSettings.namingMode ??= GAME_CONTENT_SETTINGS.namingMode;
+  candidate.contentSettings.namingMode = GAME_CONTENT_SETTINGS.namingMode;
   return candidate.contentSettings;
 }
 
@@ -145,6 +148,47 @@ function ensureGeneratedFactoryHomeCountry(
       state.settings.playerManufacturerIdentityId = identityId;
     }
   }
+}
+
+function ensureHistoricalAircraftLineups(state: GameState, settings: GameContentSettings): void {
+  for (const manufacturer of Object.values(state.manufacturers)) {
+    seedHistoricalAircraftThroughYear(manufacturer, state.date.year, state.turn, settings.namingMode);
+  }
+}
+
+function retireGeneratedRealWorldPlaceholders(state: GameState, settings: GameContentSettings): void {
+  if (settings.namingMode !== "real_world") {
+    return;
+  }
+
+  for (const manufacturer of Object.values(state.manufacturers)) {
+    if (manufacturer.isPlayer) {
+      continue;
+    }
+
+    for (const model of manufacturer.aircraftModels) {
+      const identity = model.identityId ? getAircraftIdentity(model.identityId, settings.namingMode) : undefined;
+      if (identity || !looksGeneratedPlaceholder(model.name)) {
+        continue;
+      }
+
+      model.active = false;
+      for (const factory of manufacturer.factories) {
+        for (const line of factory.productionLines) {
+          if (line.modelId !== model.id) {
+            continue;
+          }
+          line.status = "idle";
+          line.targetMonthlyRate = 0;
+          line.workersAssigned = 0;
+        }
+      }
+    }
+  }
+}
+
+function looksGeneratedPlaceholder(name: string): boolean {
+  return /\b(?:RJ|N|W)-\d{2,3}\b/i.test(name);
 }
 
 function titleFromFactoryId(factoryId: string): string {

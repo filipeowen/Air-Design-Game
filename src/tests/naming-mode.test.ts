@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getAircraftNameSelection, getManufacturerIdentities, getManufacturerIdentity } from "@/data/identities";
 import { createSaveFile, parseSaveFile } from "@/game/save/schema";
 import { createNewGame } from "@/game/simulation/createGame";
+import { processMonthlyTurn } from "@/game/simulation/processMonthlyTurn";
 import type { GameState, SaveFile } from "@/game/types";
 
 describe("content naming mode", () => {
@@ -88,6 +89,59 @@ describe("content naming mode", () => {
     expect(getAircraftNameSelection("meridian-aviation", "narrow-body", 1988, "real_world").displayName).toBe("Airbus A320");
   });
 
+  it("seeds real-world competitors with historical aircraft instead of generic placeholders", () => {
+    const state = createNewGame({ seed: 1973 });
+    const manufacturerNames = Object.values(state.manufacturers).map((manufacturer) => manufacturer.name);
+    const activeCompetitorModelNames = Object.values(state.manufacturers).flatMap((manufacturer) =>
+      manufacturer.isPlayer ? [] : manufacturer.aircraftModels.filter((model) => model.active).map((model) => model.name)
+    );
+
+    expect(manufacturerNames).toEqual(
+      expect.arrayContaining(["Airbus", "Bombardier", "Ilyushin", "Lockheed", "McDonnell Douglas", "Sud Aviation", "Tupolev"])
+    );
+    expect(manufacturerNames).not.toEqual(
+      expect.arrayContaining(["Atlantico Aeronautics", "Meridian Aviation", "Pacific Aeroworks", "Sunrise Heavy Industries"])
+    );
+    expect(activeCompetitorModelNames).toEqual(
+      expect.arrayContaining(["Douglas DC-8", "Douglas DC-9", "Fokker F28", "Ilyushin Il-62", "Sud Aviation Caravelle", "Tupolev Tu-134"])
+    );
+    expect(activeCompetitorModelNames.some((name) => /\b(?:RJ|N|W)-\d{2,3}\b/i.test(name))).toBe(false);
+    expect(state.manufacturers["meridian-aviation"]?.aircraftModels.map((model) => model.name)).not.toContain("Airbus A300");
+  });
+
+  it("introduces Airbus models on their historical timeline", () => {
+    let state = createNewGame({ seed: 320 });
+    let latestActions: string[] = [];
+
+    while (state.date.year < 1974) {
+      const result = processMonthlyTurn(state);
+      state = result.gameState;
+      latestActions = result.report.competitorActions;
+    }
+
+    expect(state.date).toEqual({ year: 1974, month: 1 });
+    expect(state.manufacturers["meridian-aviation"]?.aircraftModels.map((model) => model.name)).toContain("Airbus A300");
+    expect(latestActions).toContain("Airbus introduced Airbus A300.");
+
+    while (state.date.year < 1983) {
+      const result = processMonthlyTurn(state);
+      state = result.gameState;
+      latestActions = result.report.competitorActions;
+    }
+
+    expect(state.manufacturers["meridian-aviation"]?.aircraftModels.map((model) => model.name)).toContain("Airbus A310");
+    expect(latestActions).toContain("Airbus introduced Airbus A310.");
+
+    while (state.date.year < 1988) {
+      const result = processMonthlyTurn(state);
+      state = result.gameState;
+      latestActions = result.report.competitorActions;
+    }
+
+    expect(state.manufacturers["meridian-aviation"]?.aircraftModels.map((model) => model.name)).toContain("Airbus A320");
+    expect(latestActions).toContain("Airbus introduced Airbus A320.");
+  });
+
   it("migrates older fictional saves to the active real-world content setting", () => {
     const fictionalState = createNewGame({ seed: 42, contentSettings: { namingMode: "fictional" } });
     const legacySave = createSaveFile("legacy", fictionalState) as unknown as Omit<SaveFile, "gameState"> & {
@@ -102,5 +156,18 @@ describe("content naming mode", () => {
     expect(loaded.manufacturers[loaded.playerCompanyId]?.name).toBe("Boeing");
     expect(loaded.manufacturers["pacific-aeroworks"]?.name).toBe("McDonnell Douglas");
     expect(loaded.airlines["continental-crown"]?.name).toBe("United Airlines");
+  });
+
+  it("converts explicit fictional saves to the active real-world mode", () => {
+    const fictionalState = createNewGame({ seed: 43, contentSettings: { namingMode: "fictional" } });
+    const loaded = parseSaveFile(JSON.stringify(createSaveFile("fictional-v2", fictionalState))).gameState;
+    const activeCompetitorModelNames = Object.values(loaded.manufacturers).flatMap((manufacturer) =>
+      manufacturer.isPlayer ? [] : manufacturer.aircraftModels.filter((model) => model.active).map((model) => model.name)
+    );
+
+    expect(loaded.contentSettings.namingMode).toBe("real_world");
+    expect(loaded.manufacturers["pacific-aeroworks"]?.name).toBe("McDonnell Douglas");
+    expect(activeCompetitorModelNames).toContain("Douglas DC-8");
+    expect(activeCompetitorModelNames.some((name) => /\b(?:RJ|N|W)-\d{2,3}\b/i.test(name))).toBe(false);
   });
 });
