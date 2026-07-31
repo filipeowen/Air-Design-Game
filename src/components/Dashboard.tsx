@@ -41,7 +41,14 @@ import {
   getAvailableEngineOptions,
   sanitizeAircraftStudioDesign
 } from "@/game/aircraft/advancedDesign";
-import { HIGH_LIFT_FACTORS, MATERIAL_FACTORS, SYSTEM_FACTORS, WINGTIP_FACTORS } from "@/game/aircraft/designConfig";
+import {
+  CABIN_CLASS_DEFAULTS,
+  DESIGN_CATEGORY_LIMITS,
+  HIGH_LIFT_FACTORS,
+  MATERIAL_FACTORS,
+  SYSTEM_FACTORS,
+  WINGTIP_FACTORS
+} from "@/game/aircraft/designConfig";
 import { getGameEmails } from "@/game/email/messages";
 import { getAssignedFactoryWorkers, getFactoryAssignedWorkers, getFactoryStatus } from "@/game/factories/process";
 import { canResearchTechnology } from "@/game/research/process";
@@ -216,6 +223,46 @@ const ENGINE_POSITION_LABELS: Record<EnginePosition, string> = {
   "rear-fuselage": "Rear fuselage",
   "tail-mounted": "Tail mounted"
 };
+
+type CabinMix = "economy-heavy" | "standard" | "premium-heavy" | "executive";
+type ComfortStandard = "dense" | "standard" | "comfortable";
+type WingPlan = "compact" | "balanced" | "efficient" | "long-range";
+type RangePackage = "short" | "balanced" | "long" | "maximum";
+type SafetyStandard = "basic" | "airline-standard" | "high-reliability" | "flagship";
+
+const CABIN_MIX_OPTIONS: { value: CabinMix; label: string }[] = [
+  { value: "economy-heavy", label: "Economy-heavy" },
+  { value: "standard", label: "Standard airline" },
+  { value: "premium-heavy", label: "Premium-heavy" },
+  { value: "executive", label: "Executive-heavy" }
+];
+
+const COMFORT_STANDARD_OPTIONS: { value: ComfortStandard; label: string }[] = [
+  { value: "dense", label: "Dense" },
+  { value: "standard", label: "Standard" },
+  { value: "comfortable", label: "Comfortable" }
+];
+
+const WING_PLAN_OPTIONS: { value: WingPlan; label: string }[] = [
+  { value: "compact", label: "Compact airport-friendly" },
+  { value: "balanced", label: "Balanced" },
+  { value: "efficient", label: "Efficient cruise wing" },
+  { value: "long-range", label: "Long-range wing" }
+];
+
+const RANGE_PACKAGE_OPTIONS: { value: RangePackage; label: string }[] = [
+  { value: "short", label: "Short-haul" },
+  { value: "balanced", label: "Balanced" },
+  { value: "long", label: "Long-range" },
+  { value: "maximum", label: "Maximum range" }
+];
+
+const SAFETY_STANDARD_OPTIONS: { value: SafetyStandard; label: string }[] = [
+  { value: "basic", label: "Basic" },
+  { value: "airline-standard", label: "Airline standard" },
+  { value: "high-reliability", label: "High reliability" },
+  { value: "flagship", label: "Flagship" }
+];
 
 export function Dashboard() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -931,12 +978,18 @@ function AircraftTab({
   const [stage, setStage] = useState<AircraftDesignStageId>("brief");
   const cabinGeometry = useMemo(() => calculateCabinGeometry(designInput), [designInput]);
   const categoryDefinition = AIRCRAFT_CATEGORIES[designInput.category];
+  const cabinMix = inferCabinMix(designInput);
+  const comfortStandard = inferComfortStandard(designInput);
+  const wingPlan = inferWingPlan(designInput);
+  const rangePackage = inferRangePackage(designInput);
+  const safetyStandard = inferSafetyStandard(designInput);
   const engineOptions = getAvailableEngineOptions(
     designInput.category,
     designInput.propulsion.position,
     unlockedTechnologyIds,
     designInput.intendedEntryIntoServiceYear
   );
+  const selectedEngine = engineOptions.find((engine) => engine.id === designInput.propulsion.engineModelId);
   const materialOptions = (Object.keys(MATERIAL_LABELS) as StructuralMaterialChoice[]).filter(
     (material) => !MATERIAL_FACTORS[material].requiredTechnologyId || unlockedTechnologyIds.includes(MATERIAL_FACTORS[material].requiredTechnologyId)
   );
@@ -965,15 +1018,6 @@ function AircraftTab({
 
   function updateFuselage<K extends keyof AircraftStudioDesign["fuselage"]>(key: K, value: AircraftStudioDesign["fuselage"][K]) {
     commit({ ...designInput, fuselage: { ...designInput.fuselage, [key]: value } });
-  }
-
-  function updateCabin<K extends keyof AircraftStudioDesign["cabin"]>(key: K, value: AircraftStudioDesign["cabin"][K]) {
-    commit({ ...designInput, cabin: { ...designInput.cabin, [key]: value } });
-  }
-
-  function updateZone(index: number, changes: Partial<AircraftStudioDesign["cabin"]["zones"][number]>) {
-    const zones = designInput.cabin.zones.map((zone, zoneIndex) => (zoneIndex === index ? { ...zone, ...changes } : zone));
-    updateCabin("zones", zones);
   }
 
   function updateWing<K extends keyof AircraftStudioDesign["wing"]>(key: K, value: AircraftStudioDesign["wing"][K]) {
@@ -1045,24 +1089,34 @@ function AircraftTab({
 
     if (stage === "fuselage") {
       return (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <NumberControl label="Total length m" value={designInput.fuselage.totalLengthM} min={21} max={78} step={0.1} onChange={(value) => updateFuselage("totalLengthM", value)} />
-          <NumberControl label="Usable cabin length m" value={designInput.fuselage.usableCabinLengthM} min={13} max={60} step={0.1} onChange={(value) => updateFuselage("usableCabinLengthM", value)} />
-          <NumberControl label="External diameter m" value={designInput.fuselage.externalDiameterM} min={2.6} max={7.2} step={0.05} onChange={(value) => updateFuselage("externalDiameterM", value)} />
-          <NumberControl label="Internal cabin width m" value={designInput.fuselage.internalCabinWidthM} min={2.2} max={6.65} step={0.05} onChange={(value) => updateFuselage("internalCabinWidthM", value)} />
-          <NumberControl label="Cargo volume m3" value={designInput.fuselage.cargoVolumeM3} min={3} max={180} step={1} onChange={(value) => updateFuselage("cargoVolumeM3", value)} />
-          <NumberControl label="Door count" value={designInput.fuselage.doorCount} min={2} max={12} step={1} onChange={(value) => updateFuselage("doorCount", value)} />
-          <NumberControl label="Emergency exits" value={designInput.fuselage.exitCount} min={2} max={16} step={1} onChange={(value) => updateFuselage("exitCount", value)} />
-          <SelectControl
-            label="Cargo deck"
-            value={designInput.fuselage.cargoDeckConfiguration}
-            options={[
-              { value: "bulk", label: "Bulk hold" },
-              { value: "standard-containers", label: "Standard containers" },
-              { value: "widebody-containers", label: "Wide-body containers" },
-              { value: "none", label: "None" }
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Metric label="Cabin length" value={`${designInput.fuselage.usableCabinLengthM.toFixed(1)} m`} />
+            <Metric label="Cabin width" value={`${designInput.fuselage.internalCabinWidthM.toFixed(2)} m`} />
+            <Metric label="Cargo" value={`${designInput.fuselage.cargoVolumeM3.toLocaleString()} m3`} />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <NumberControl label="Fuselage length m" value={designInput.fuselage.totalLengthM} min={21} max={78} step={0.1} onChange={(value) => commit(updateSimplifiedFuselage(designInput, { totalLengthM: value }))} />
+            <NumberControl label="Cabin width m" value={designInput.fuselage.internalCabinWidthM} min={2.2} max={6.65} step={0.05} onChange={(value) => commit(updateSimplifiedFuselage(designInput, { internalCabinWidthM: value }))} />
+            <NumberControl label="Cargo volume m3" value={designInput.fuselage.cargoVolumeM3} min={3} max={180} step={1} onChange={(value) => updateFuselage("cargoVolumeM3", value)} />
+            <SelectControl
+              label="Cargo deck"
+              value={designInput.fuselage.cargoDeckConfiguration}
+              options={[
+                { value: "bulk", label: "Bulk hold" },
+                { value: "standard-containers", label: "Standard containers" },
+                { value: "widebody-containers", label: "Wide-body containers" },
+                { value: "none", label: "None" }
+              ]}
+              onChange={(value) => updateFuselage("cargoDeckConfiguration", value as AircraftStudioDesign["fuselage"]["cargoDeckConfiguration"])}
+            />
+          </div>
+          <StudioNote
+            title="Automatically handled"
+            lines={[
+              "Nose length, tail length, doors, and emergency exits are sized from aircraft category and cabin capacity.",
+              "Use this stage for the big physical tradeoff: longer and wider aircraft carry more, but cost and weigh more."
             ]}
-            onChange={(value) => updateFuselage("cargoDeckConfiguration", value as AircraftStudioDesign["fuselage"]["cargoDeckConfiguration"])}
           />
         </div>
       );
@@ -1077,63 +1131,79 @@ function AircraftTab({
             <Metric label="Cabin width used" value={`${cabinGeometry.widestRequiredCabinM} m`} />
             <Metric label="Cabin density" value={`${cabinGeometry.density}/m`} />
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <NumberControl label="Aisles" value={designInput.cabin.aisleCount} min={1} max={3} step={1} onChange={(value) => updateCabin("aisleCount", value)} />
-            <NumberControl label="Aisle width m" value={designInput.cabin.aisleWidthM} min={0.38} max={0.68} step={0.01} onChange={(value) => updateCabin("aisleWidthM", value)} />
-            <NumberControl label="Lavatories" value={designInput.cabin.lavatoryCount} min={1} max={14} step={1} onChange={(value) => updateCabin("lavatoryCount", value)} />
-            <NumberControl label="Galleys" value={designInput.cabin.galleyCount} min={1} max={8} step={1} onChange={(value) => updateCabin("galleyCount", value)} />
-            <NumberControl label="Galley area m2" value={designInput.cabin.galleySizeM2} min={1.5} max={18} step={0.1} onChange={(value) => updateCabin("galleySizeM2", value)} />
-            <NumberControl label="Crew rest m2" value={designInput.cabin.crewRestAreaM2} min={0} max={12} step={0.1} onChange={(value) => updateCabin("crewRestAreaM2", value)} />
+          <div className="grid gap-4 lg:grid-cols-3">
+            <NumberControl
+              label="Target certified seats"
+              value={cabinGeometry.maximumCertifiedCapacity || categoryDefinition.capacityRange[0]}
+              min={categoryDefinition.capacityRange[0]}
+              max={categoryDefinition.capacityRange[1]}
+              step={1}
+              onChange={(value) => commit(applyCabinPlan(designInput, value, cabinMix, comfortStandard))}
+            />
+            <SelectControl
+              label="Cabin mix"
+              value={cabinMix}
+              options={CABIN_MIX_OPTIONS}
+              onChange={(value) => commit(applyCabinPlan(designInput, cabinGeometry.maximumCertifiedCapacity || categoryDefinition.capacityRange[0], value as CabinMix, comfortStandard))}
+            />
+            <SelectControl
+              label="Comfort standard"
+              value={comfortStandard}
+              options={COMFORT_STANDARD_OPTIONS}
+              onChange={(value) => commit(applyCabinPlan(designInput, cabinGeometry.maximumCertifiedCapacity || categoryDefinition.capacityRange[0], cabinMix, value as ComfortStandard))}
+            />
           </div>
-          <div className="grid gap-3 min-[1500px]:grid-cols-2">
-            {designInput.cabin.zones.map((zone, index) => (
-              <div key={zone.cabinClass} className="min-w-0 rounded-lg border border-[#2a3445] bg-[#0b111c] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="min-w-0 text-wrap font-semibold leading-6">{CABIN_LABELS[zone.cabinClass]}</h3>
-                  <span className="shrink-0 text-sm text-[#a8b3c4]">{cabinGeometry.zoneCapacities[zone.cabinClass] ?? 0} seats</span>
-                </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 min-[1500px]:grid-cols-1 min-[1640px]:grid-cols-2">
-                  <NumberControl label="Zone length m" value={zone.zoneLengthM} min={0} max={42} step={0.1} onChange={(value) => updateZone(index, { zoneLengthM: value })} />
-                  <NumberControl label="Seats across" value={zone.seatsAcross} min={1} max={designInput.category === "wide-body" ? 10 : designInput.category === "narrow-body" ? 6 : 5} step={1} onChange={(value) => updateZone(index, { seatsAcross: value })} />
-                  <NumberControl label="Seat width m" value={zone.seatWidthM} min={0.43} max={0.72} step={0.01} onChange={(value) => updateZone(index, { seatWidthM: value })} />
-                  <NumberControl label="Seat pitch m" value={zone.seatPitchM} min={0.71} max={2.05} step={0.01} onChange={(value) => updateZone(index, { seatPitchM: value })} />
-                </div>
-              </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            {designInput.cabin.zones.map((zone) => (
+              <Metric key={zone.cabinClass} label={CABIN_LABELS[zone.cabinClass]} value={`${cabinGeometry.zoneCapacities[zone.cabinClass] ?? 0} seats`} />
             ))}
           </div>
+          <StudioNote
+            title="Automatically handled"
+            lines={[
+              "Aisles, service areas, seat pitch, seat width, lavatories, galleys, and exits are generated from target seats, cabin mix, and comfort standard.",
+              "If the cabin does not fit, reduce seats or pick a larger fuselage in the previous stage."
+            ]}
+          />
         </div>
       );
     }
 
     if (stage === "wing") {
       return (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <NumberControl label="Wingspan m" value={designInput.wing.wingspanM} min={21} max={72} step={0.1} onChange={(value) => updateWing("wingspanM", value)} />
-          <NumberControl label="Wing area m2" value={designInput.wing.wingAreaM2} min={48} max={410} step={1} onChange={(value) => updateWing("wingAreaM2", value)} />
-          <NumberControl label="Sweep degrees" value={designInput.wing.sweepDeg} min={10} max={38} step={1} onChange={(value) => updateWing("sweepDeg", value)} />
-          <NumberControl label="Thickness ratio" value={designInput.wing.thicknessRatio} min={0.09} max={0.15} step={0.005} onChange={(value) => updateWing("thicknessRatio", value)} />
-          <SelectControl
-            label="High-lift system"
-            value={designInput.wing.highLiftSystem}
-            options={highLiftOptions.map((value) => ({ value, label: value.replaceAll("-", " ") }))}
-            onChange={(value) => updateWing("highLiftSystem", value as AircraftStudioDesign["wing"]["highLiftSystem"])}
-          />
-          <SelectControl
-            label="Wingtip device"
-            value={designInput.wing.wingtipDevice}
-            options={wingtipOptions.map((value) => ({ value, label: value === "none" ? "None" : value.replaceAll("-", " ") }))}
-            onChange={(value) => updateWing("wingtipDevice", value as AircraftStudioDesign["wing"]["wingtipDevice"])}
-          />
-          <NumberControl label="Wing fuel volume m3" value={designInput.wing.wingFuelVolumeM3} min={0} max={185} step={0.5} onChange={(value) => updateWing("wingFuelVolumeM3", value)} />
-          <SelectControl
-            label="Wing mounting"
-            value={designInput.wing.mountingPosition}
-            options={[
-              { value: "low", label: "Low wing" },
-              { value: "mid", label: "Mid wing" },
-              { value: "high", label: "High wing" }
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <Metric label="Wingspan" value={`${designInput.wing.wingspanM.toFixed(1)} m`} />
+            <Metric label="Wing area" value={`${designInput.wing.wingAreaM2.toLocaleString()} m2`} />
+            <Metric label="Sweep" value={`${designInput.wing.sweepDeg} deg`} />
+            <Metric label="Wing fuel" value={`${designInput.wing.wingFuelVolumeM3.toLocaleString()} m3`} />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <SelectControl
+              label="Wing emphasis"
+              value={wingPlan}
+              options={WING_PLAN_OPTIONS}
+              onChange={(value) => commit(applyWingPlan(designInput, value as WingPlan))}
+            />
+            <SelectControl
+              label="High-lift system"
+              value={designInput.wing.highLiftSystem}
+              options={highLiftOptions.map((value) => ({ value, label: value.replaceAll("-", " ") }))}
+              onChange={(value) => updateWing("highLiftSystem", value as AircraftStudioDesign["wing"]["highLiftSystem"])}
+            />
+            <SelectControl
+              label="Wingtip device"
+              value={designInput.wing.wingtipDevice}
+              options={wingtipOptions.map((value) => ({ value, label: value === "none" ? "None" : value.replaceAll("-", " ") }))}
+              onChange={(value) => updateWing("wingtipDevice", value as AircraftStudioDesign["wing"]["wingtipDevice"])}
+            />
+          </div>
+          <StudioNote
+            title="Automatically handled"
+            lines={[
+              "Wing area, span, sweep, thickness, mounting, and wing tank volume move together from the selected wing emphasis.",
+              "Compact wings help airports. Efficient and long-range wings improve cruise economics but add size and cost."
             ]}
-            onChange={(value) => updateWing("mountingPosition", value as AircraftStudioDesign["wing"]["mountingPosition"])}
           />
         </div>
       );
@@ -1159,7 +1229,6 @@ function AircraftTab({
               onChange={(value) => updatePropulsion("engineModelId", value as EngineModelId)}
             />
             <NumberControl label="Engine count" value={designInput.propulsion.engineCount} min={2} max={4} step={1} onChange={(value) => updatePropulsion("engineCount", value)} />
-            <NumberControl label="Thrust derate %" value={designInput.propulsion.thrustDeratePercent} min={0} max={18} step={1} onChange={(value) => updatePropulsion("thrustDeratePercent", value)} />
             <SelectControl
               label="Maintenance priority"
               value={designInput.propulsion.maintenancePriority}
@@ -1170,8 +1239,15 @@ function AircraftTab({
               ]}
               onChange={(value) => updatePropulsion("maintenancePriority", value as AircraftStudioDesign["propulsion"]["maintenancePriority"])}
             />
-            <NumberControl label="Engine commonality" value={designInput.propulsion.commonalityPreference} min={0} max={100} step={1} onChange={(value) => updatePropulsion("commonalityPreference", value)} />
           </div>
+          {selectedEngine && (
+            <div className="grid gap-3 md:grid-cols-4">
+              <Metric label="Thrust" value={`${selectedEngine.maxThrustKn} kN`} />
+              <Metric label="Available" value={selectedEngine.availableYear.toString()} />
+              <Metric label="Reliability" value={selectedEngine.reliability.toString()} />
+              <Metric label="Noise" value={selectedEngine.noise.toString()} />
+            </div>
+          )}
           <StudioNote
             title="Unlocked engines only"
             lines={[
@@ -1186,21 +1262,38 @@ function AircraftTab({
 
     if (stage === "fuel") {
       return (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <NumberControl label="Center tank m3" value={designInput.fuelSystem.centerTankVolumeM3} min={0} max={185} step={0.5} onChange={(value) => updateFuel("centerTankVolumeM3", value)} />
-          <NumberControl label="Auxiliary tank m3" value={designInput.fuelSystem.auxiliaryTankVolumeM3} min={0} max={32} step={0.5} onChange={(value) => updateFuel("auxiliaryTankVolumeM3", value)} />
-          <NumberControl label="Reserve policy %" value={designInput.fuelSystem.reservePolicyPercent} min={8} max={28} step={1} onChange={(value) => updateFuel("reservePolicyPercent", value)} />
-          <NumberControl label="MTOW target kg" value={designInput.fuelSystem.mtowTargetKg} min={24_000} max={360_000} step={500} onChange={(value) => updateFuel("mtowTargetKg", value)} />
-          <NumberControl label="Fuel reinforcement" value={designInput.fuelSystem.structuralFuelReinforcement} min={0} max={25} step={1} onChange={(value) => updateFuel("structuralFuelReinforcement", value)} />
-          <SelectControl
-            label="Payload priority"
-            value={designInput.fuelSystem.payloadPriority}
-            options={[
-              { value: "payload", label: "Payload" },
-              { value: "balanced", label: "Balanced" },
-              { value: "range", label: "Range" }
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <Metric label="Total fuel volume" value={`${(designInput.wing.wingFuelVolumeM3 + designInput.fuelSystem.centerTankVolumeM3 + designInput.fuelSystem.auxiliaryTankVolumeM3).toLocaleString()} m3`} />
+            <Metric label="MTOW target" value={`${designInput.fuelSystem.mtowTargetKg.toLocaleString()} kg`} />
+            <Metric label="Reserve" value={`${designInput.fuelSystem.reservePolicyPercent}%`} />
+            <Metric label="Estimated range" value={`${designPreview.typicalRangeNm.toLocaleString()} nm`} />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <SelectControl
+              label="Range package"
+              value={rangePackage}
+              options={RANGE_PACKAGE_OPTIONS}
+              onChange={(value) => commit(applyRangePackage(designInput, value as RangePackage))}
+            />
+            <SelectControl
+              label="Payload priority"
+              value={designInput.fuelSystem.payloadPriority}
+              options={[
+                { value: "payload", label: "Payload" },
+                { value: "balanced", label: "Balanced" },
+                { value: "range", label: "Range" }
+              ]}
+              onChange={(value) => updateFuel("payloadPriority", value as AircraftStudioDesign["fuelSystem"]["payloadPriority"])}
+            />
+            <RangeControl label="Reserve policy" value={designInput.fuelSystem.reservePolicyPercent} min={8} max={28} step={1} onChange={(value) => updateFuel("reservePolicyPercent", value)} />
+          </div>
+          <StudioNote
+            title="Automatically handled"
+            lines={[
+              "Wing tank volume, center tank volume, auxiliary tanks, MTOW target, and fuel reinforcement are generated from the range package.",
+              "Longer range gives airlines more route flexibility, but it adds weight and can squeeze payload economics."
             ]}
-            onChange={(value) => updateFuel("payloadPriority", value as AircraftStudioDesign["fuelSystem"]["payloadPriority"])}
           />
         </div>
       );
@@ -1208,30 +1301,41 @@ function AircraftTab({
 
     if (stage === "structure") {
       return (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <SelectControl label="Fuselage material" value={designInput.structure.fuselageMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("fuselageMaterial", value as StructuralMaterialChoice)} />
-          <SelectControl label="Wing material" value={designInput.structure.wingMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("wingMaterial", value as StructuralMaterialChoice)} />
-          <SelectControl label="Tail material" value={designInput.structure.tailMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("tailMaterial", value as StructuralMaterialChoice)} />
-          <SelectControl label="Control surfaces" value={designInput.structure.controlSurfaceMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => updateStructure("controlSurfaceMaterial", value as StructuralMaterialChoice)} />
-          <SelectControl
-            label="Interior material"
-            value={designInput.structure.interiorMaterial}
-            options={[
-              { value: "standard", label: "Standard" },
-              { value: "lightweight", label: "Lightweight" },
-              { value: "premium", label: "Premium" }
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Metric label="Primary material" value={MATERIAL_LABELS[designInput.structure.fuselageMaterial]} />
+            <Metric label="Interior" value={designInput.structure.interiorMaterial.replaceAll("-", " ")} />
+            <Metric label="Landing gear" value={designInput.structure.landingGearMaterial.replaceAll("-", " ")} />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <SelectControl label="Primary structure" value={designInput.structure.fuselageMaterial} options={materialOptions.map((value) => ({ value, label: MATERIAL_LABELS[value] }))} onChange={(value) => commit(applyPrimaryMaterial(designInput, value as StructuralMaterialChoice))} />
+            <SelectControl
+              label="Interior"
+              value={designInput.structure.interiorMaterial}
+              options={[
+                { value: "standard", label: "Standard" },
+                { value: "lightweight", label: "Lightweight" },
+                { value: "premium", label: "Premium" }
+              ]}
+              onChange={(value) => updateStructure("interiorMaterial", value as AircraftStudioDesign["structure"]["interiorMaterial"])}
+            />
+            <SelectControl
+              label="Landing gear"
+              value={designInput.structure.landingGearMaterial}
+              options={[
+                { value: "standard-steel", label: "Standard steel" },
+                { value: "reinforced-steel", label: "Reinforced steel" },
+                { value: "advanced-alloy", label: "Advanced alloy" }
+              ]}
+              onChange={(value) => updateStructure("landingGearMaterial", value as AircraftStudioDesign["structure"]["landingGearMaterial"])}
+            />
+          </div>
+          <StudioNote
+            title="Automatically handled"
+            lines={[
+              "Primary structure applies one material philosophy across fuselage, wing, tail, and control surfaces.",
+              "Advanced materials reduce weight, but they raise tooling, certification, and supplier risk."
             ]}
-            onChange={(value) => updateStructure("interiorMaterial", value as AircraftStudioDesign["structure"]["interiorMaterial"])}
-          />
-          <SelectControl
-            label="Landing gear material"
-            value={designInput.structure.landingGearMaterial}
-            options={[
-              { value: "standard-steel", label: "Standard steel" },
-              { value: "reinforced-steel", label: "Reinforced steel" },
-              { value: "advanced-alloy", label: "Advanced alloy" }
-            ]}
-            onChange={(value) => updateStructure("landingGearMaterial", value as AircraftStudioDesign["structure"]["landingGearMaterial"])}
           />
         </div>
       );
@@ -1243,55 +1347,24 @@ function AircraftTab({
           <div className="grid gap-4 lg:grid-cols-2">
             <SelectControl label="Avionics" value={designInput.systems.avionics} options={avionicsOptions.map((value) => ({ value, label: AVIONICS_LABELS[value] }))} onChange={(value) => updateSystems("avionics", value as AvionicsGeneration)} />
             <SelectControl
-              label="Cockpit"
-              value={designInput.systems.cockpit}
-              options={[
-                { value: "three-crew", label: "Three-crew" },
-                { value: "two-crew-analog", label: "Two-crew analog" },
-                { value: "glass-cockpit", label: "Glass cockpit" }
-              ]}
-              onChange={(value) => updateSystems("cockpit", value as AircraftStudioDesign["systems"]["cockpit"])}
-            />
-            <SelectControl
               label="Flight controls"
               value={designInput.systems.flightControls}
               options={(Object.keys(FLIGHT_CONTROL_LABELS) as FlightControlSystem[]).map((value) => ({ value, label: FLIGHT_CONTROL_LABELS[value] }))}
               onChange={(value) => updateSystems("flightControls", value as FlightControlSystem)}
             />
             <SelectControl
-              label="Redundancy"
-              value={designInput.systems.redundancy}
-              options={[
-                { value: "basic", label: "Basic" },
-                { value: "standard", label: "Standard" },
-                { value: "enhanced", label: "Enhanced" },
-                { value: "triple-redundant", label: "Triple redundant" }
-              ]}
-              onChange={(value) => updateSystems("redundancy", value as AircraftStudioDesign["systems"]["redundancy"])}
+              label="Safety standard"
+              value={safetyStandard}
+              options={SAFETY_STANDARD_OPTIONS}
+              onChange={(value) => commit(applySafetyStandard(designInput, value as SafetyStandard))}
             />
-            <SelectControl
-              label="Diagnostics"
-              value={designInput.systems.diagnostics}
-              options={[
-                { value: "manual", label: "Manual" },
-                { value: "fault-isolation", label: "Fault isolation" },
-                { value: "predictive", label: "Predictive" }
-              ]}
-              onChange={(value) => updateSystems("diagnostics", value as AircraftStudioDesign["systems"]["diagnostics"])}
-            />
-            <SelectControl
-              label="Testing intensity"
-              value={designInput.systems.reliabilityTesting}
-              options={[
-                { value: "lean", label: "Lean" },
-                { value: "standard", label: "Standard" },
-                { value: "expanded", label: "Expanded" },
-                { value: "airline-proving", label: "Airline proving" }
-              ]}
-              onChange={(value) => updateSystems("reliabilityTesting", value as AircraftStudioDesign["systems"]["reliabilityTesting"])}
-            />
-            <NumberControl label="Reliability goal" value={designInput.systems.reliabilityGoal} min={50} max={98} step={1} onChange={(value) => updateSystems("reliabilityGoal", value)} />
-            <NumberControl label="Family commonality" value={designInput.commonality} min={0} max={100} step={1} onChange={(value) => update("commonality", value)} />
+            <RangeControl label="Family commonality" value={designInput.commonality} min={0} max={100} step={1} onChange={(value) => update("commonality", value)} />
+          </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <Metric label="Reliability goal" value={designInput.systems.reliabilityGoal.toString()} />
+            <Metric label="Redundancy" value={designInput.systems.redundancy.replaceAll("-", " ")} />
+            <Metric label="Diagnostics" value={designInput.systems.diagnostics.replaceAll("-", " ")} />
+            <Metric label="Testing" value={designInput.systems.reliabilityTesting.replaceAll("-", " ")} />
           </div>
           <UnlockedTechnologyPicker technologies={unlockedDesignTechnologies} selectedIds={designInput.technologyPackage} toggleTechnology={toggleTechnology} />
         </div>
@@ -3040,6 +3113,460 @@ function AircraftPlanform() {
       <circle cx="64" cy="31" r="2" fill="#e8eef8" />
     </svg>
   );
+}
+
+function updateSimplifiedFuselage(
+  design: AircraftStudioDesign,
+  changes: Partial<Pick<AircraftStudioDesign["fuselage"], "totalLengthM" | "internalCabinWidthM">>
+): AircraftStudioDesign {
+  const limits = DESIGN_CATEGORY_LIMITS[design.category];
+  const totalLengthM = changes.totalLengthM ?? design.fuselage.totalLengthM;
+  const internalCabinWidthM = changes.internalCabinWidthM ?? design.fuselage.internalCabinWidthM;
+  const usableCabinLengthM = totalLengthM - design.fuselage.noseLengthM - design.fuselage.tailLengthM;
+
+  return {
+    ...design,
+    fuselage: {
+      ...design.fuselage,
+      totalLengthM,
+      usableCabinLengthM: clampToStep(usableCabinLengthM, limits.usableCabinLengthM[0], limits.usableCabinLengthM[1], 0.1),
+      internalCabinWidthM,
+      externalDiameterM: clampToStep(Math.max(internalCabinWidthM + 0.42, design.fuselage.externalDiameterM), limits.externalDiameterM[0], limits.externalDiameterM[1], 0.05)
+    }
+  };
+}
+
+function applyCabinPlan(
+  design: AircraftStudioDesign,
+  rawSeatTarget: number,
+  mix: CabinMix,
+  comfort: ComfortStandard
+): AircraftStudioDesign {
+  const category = AIRCRAFT_CATEGORIES[design.category];
+  const limits = DESIGN_CATEGORY_LIMITS[design.category];
+  const seatTarget = Math.round(clamp(rawSeatTarget, category.capacityRange[0], category.capacityRange[1]));
+  const seatCounts = allocateCabinSeats(seatTarget, cabinMixShares(design.category, mix));
+  const aisleCount = design.category === "wide-body" ? 2 : 1;
+  const aisleWidthM = comfort === "comfortable" ? (design.category === "wide-body" ? 0.56 : 0.5) : comfort === "dense" ? 0.42 : design.category === "wide-body" ? 0.51 : 0.46;
+
+  const zones = (["economy", "premium-economy", "business", "first"] as CabinClass[]).map((cabinClass) => {
+    const seats = seatCounts[cabinClass];
+    const seatsAcross = seatsAcrossForZone(design.category, cabinClass, comfort);
+    const seat = cabinSeatStandard(cabinClass, comfort);
+    const rows = seats > 0 ? Math.max(1, Math.ceil(seats / seatsAcross)) : 0;
+    return {
+      cabinClass,
+      zoneLengthM: roundToStep(rows * seat.pitchM, 0.1),
+      seatsAcross,
+      seatWidthM: seat.widthM,
+      seatPitchM: seat.pitchM,
+      layoutPattern: cabinLayoutPattern(design.category, cabinClass, seatsAcross)
+    };
+  });
+
+  const lavatoryCount = Math.max(1, Math.ceil(seatTarget / (design.category === "wide-body" ? 58 : design.category === "narrow-body" ? 52 : 46)));
+  const galleyCount = Math.max(1, design.category === "wide-body" ? Math.ceil(seatTarget / 95) : design.category === "narrow-body" ? Math.ceil(seatTarget / 78) : 1);
+  const galleySizeM2 = roundToStep(galleyCount * (design.category === "wide-body" ? 2.2 : design.category === "narrow-body" ? 1.8 : 1.5), 0.1);
+  const crewRestAreaM2 = design.category === "wide-body" && seatTarget > 260 ? (comfort === "dense" ? 1.5 : 3) : 0;
+  const storageAreaM2 = roundToStep(seatTarget * (comfort === "comfortable" ? 0.026 : 0.019), 0.1);
+  const serviceLengthM = cabinServiceLength(lavatoryCount, galleyCount, galleySizeM2, storageAreaM2, crewRestAreaM2);
+  const passengerLengthM = zones.reduce((sum, zone) => sum + zone.zoneLengthM, 0);
+  const usableCabinLengthM = clampToStep(passengerLengthM + serviceLengthM + 0.8, limits.usableCabinLengthM[0], limits.usableCabinLengthM[1], 0.1);
+  const totalLengthM = clampToStep(usableCabinLengthM + design.fuselage.noseLengthM + design.fuselage.tailLengthM, limits.fuselageLengthM[0], limits.fuselageLengthM[1], 0.1);
+  const requiredCabinWidthM = zones.reduce((maxWidth, zone) => Math.max(maxWidth, requiredSimplifiedCabinWidth(design.category, zone, aisleCount, aisleWidthM)), 0);
+  const internalCabinWidthM = clampToStep(Math.max(design.fuselage.internalCabinWidthM, requiredCabinWidthM + 0.04), limits.cabinWidthM[0], limits.cabinWidthM[1], 0.05);
+  const doorCount = Math.max(design.category === "wide-body" ? 6 : 2, Math.ceil(seatTarget / (design.category === "wide-body" ? 75 : 70)) * 2);
+  const exitCount = Math.max(design.category === "wide-body" ? 6 : 2, Math.ceil(seatTarget / 45));
+
+  return {
+    ...design,
+    fuselage: {
+      ...design.fuselage,
+      totalLengthM,
+      usableCabinLengthM,
+      internalCabinWidthM,
+      externalDiameterM: clampToStep(Math.max(internalCabinWidthM + 0.42, design.fuselage.externalDiameterM), limits.externalDiameterM[0], limits.externalDiameterM[1], 0.05),
+      doorCount,
+      exitCount
+    },
+    cabin: {
+      ...design.cabin,
+      zones,
+      aisleCount,
+      aisleWidthM,
+      lavatoryCount,
+      galleyCount,
+      galleySizeM2,
+      crewRestAreaM2,
+      storageAreaM2
+    }
+  };
+}
+
+function applyWingPlan(design: AircraftStudioDesign, plan: WingPlan): AircraftStudioDesign {
+  const limits = DESIGN_CATEGORY_LIMITS[design.category];
+  const profile: Record<WingPlan, { span: number; area: number; sweep: number; thickness: number; fuel: number }> = {
+    compact: { span: 0.18, area: 0.22, sweep: 24, thickness: 0.125, fuel: 0.32 },
+    balanced: { span: 0.45, area: 0.45, sweep: 27, thickness: 0.115, fuel: 0.5 },
+    efficient: { span: 0.68, area: 0.62, sweep: 30, thickness: 0.11, fuel: 0.64 },
+    "long-range": { span: 0.86, area: 0.78, sweep: 31, thickness: 0.105, fuel: 0.78 }
+  };
+  const selected = profile[plan];
+
+  return {
+    ...design,
+    wing: {
+      ...design.wing,
+      wingspanM: roundToStep(interpolate(limits.wingSpanM[0], limits.wingSpanM[1], selected.span), 0.1),
+      wingAreaM2: Math.round(interpolate(limits.wingAreaM2[0], limits.wingAreaM2[1], selected.area)),
+      sweepDeg: selected.sweep,
+      thicknessRatio: selected.thickness,
+      wingFuelVolumeM3: roundToStep(interpolate(limits.fuelVolumeM3[0], limits.fuelVolumeM3[1], selected.fuel), 0.5),
+      mountingPosition: "low"
+    }
+  };
+}
+
+function applyRangePackage(design: AircraftStudioDesign, rangePackage: RangePackage): AircraftStudioDesign {
+  const limits = DESIGN_CATEGORY_LIMITS[design.category];
+  const factor: Record<RangePackage, number> = {
+    short: 0.34,
+    balanced: 0.52,
+    long: 0.73,
+    maximum: 0.9
+  };
+  const selected = factor[rangePackage];
+  const wingFuelVolumeM3 = roundToStep(interpolate(limits.fuelVolumeM3[0], limits.fuelVolumeM3[1], Math.min(0.82, selected + 0.08)), 0.5);
+  const extraFuelVolumeM3 = Math.max(0, interpolate(limits.fuelVolumeM3[0] * 0.25, limits.fuelVolumeM3[1] * 0.42, selected) - limits.fuelVolumeM3[0] * 0.25);
+  const mtow = mtowRange(design.category);
+
+  return {
+    ...design,
+    wing: {
+      ...design.wing,
+      wingFuelVolumeM3
+    },
+    fuelSystem: {
+      ...design.fuelSystem,
+      centerTankVolumeM3: roundToStep(extraFuelVolumeM3 * 0.72, 0.5),
+      auxiliaryTankVolumeM3: roundToStep(extraFuelVolumeM3 * 0.28, 0.5),
+      reservePolicyPercent: rangePackage === "maximum" ? 20 : rangePackage === "long" ? 18 : rangePackage === "short" ? 14 : 16,
+      payloadPriority: rangePackage === "short" ? "payload" : rangePackage === "balanced" ? "balanced" : "range",
+      mtowTargetKg: Math.round(interpolate(mtow[0], mtow[1], selected) / 500) * 500,
+      structuralFuelReinforcement: rangePackage === "maximum" ? 17 : rangePackage === "long" ? 12 : rangePackage === "short" ? 4 : 7
+    }
+  };
+}
+
+function applyPrimaryMaterial(design: AircraftStudioDesign, material: StructuralMaterialChoice): AircraftStudioDesign {
+  return {
+    ...design,
+    structure: {
+      ...design.structure,
+      fuselageMaterial: material,
+      wingMaterial: material,
+      tailMaterial: material,
+      controlSurfaceMaterial: material
+    }
+  };
+}
+
+function applySafetyStandard(design: AircraftStudioDesign, standard: SafetyStandard): AircraftStudioDesign {
+  const config = {
+    basic: {
+      redundancy: "basic",
+      diagnostics: "manual",
+      reliabilityTesting: "lean",
+      reliabilityGoal: 62,
+      hydraulics: "conventional",
+      electrical: "conventional",
+      fireProtection: "standard",
+      iceProtection: "standard",
+      environmentalControl: "standard",
+      cockpit: "three-crew"
+    },
+    "airline-standard": {
+      redundancy: "standard",
+      diagnostics: "manual",
+      reliabilityTesting: "standard",
+      reliabilityGoal: 72,
+      hydraulics: "dual",
+      electrical: "expanded",
+      fireProtection: "standard",
+      iceProtection: "standard",
+      environmentalControl: "improved",
+      cockpit: "two-crew-analog"
+    },
+    "high-reliability": {
+      redundancy: "enhanced",
+      diagnostics: "fault-isolation",
+      reliabilityTesting: "expanded",
+      reliabilityGoal: 82,
+      hydraulics: "triple",
+      electrical: "expanded",
+      fireProtection: "improved",
+      iceProtection: "enhanced",
+      environmentalControl: "improved",
+      cockpit: "two-crew-analog"
+    },
+    flagship: {
+      redundancy: "triple-redundant",
+      diagnostics: "predictive",
+      reliabilityTesting: "airline-proving",
+      reliabilityGoal: 90,
+      hydraulics: "triple",
+      electrical: "advanced",
+      fireProtection: "advanced",
+      iceProtection: "enhanced",
+      environmentalControl: "advanced",
+      cockpit: "glass-cockpit"
+    }
+  } as const;
+
+  return {
+    ...design,
+    systems: {
+      ...design.systems,
+      ...config[standard]
+    }
+  };
+}
+
+function inferCabinMix(design: AircraftStudioDesign): CabinMix {
+  const cabin = calculateCabinGeometry(design);
+  const total = Math.max(1, cabin.physicalPassengerCapacity);
+  const premiumSeats =
+    (cabin.zoneCapacities["premium-economy"] ?? 0) +
+    (cabin.zoneCapacities.business ?? 0) +
+    (cabin.zoneCapacities.first ?? 0);
+  const executiveSeats = (cabin.zoneCapacities.business ?? 0) + (cabin.zoneCapacities.first ?? 0);
+  if (executiveSeats / total > 0.34) {
+    return "executive";
+  }
+  if (premiumSeats / total > 0.24) {
+    return "premium-heavy";
+  }
+  if (premiumSeats / total < 0.08) {
+    return "economy-heavy";
+  }
+  return "standard";
+}
+
+function inferComfortStandard(design: AircraftStudioDesign): ComfortStandard {
+  const activeZones = design.cabin.zones.filter((zone) => zone.zoneLengthM > 0);
+  const averagePitch =
+    activeZones.reduce((sum, zone) => sum + zone.seatPitchM, 0) / Math.max(1, activeZones.length);
+  if (averagePitch > 1.02) {
+    return "comfortable";
+  }
+  if (averagePitch < 0.84) {
+    return "dense";
+  }
+  return "standard";
+}
+
+function inferWingPlan(design: AircraftStudioDesign): WingPlan {
+  const limits = DESIGN_CATEGORY_LIMITS[design.category];
+  const spanRatio = normalizeBetween(design.wing.wingspanM, limits.wingSpanM[0], limits.wingSpanM[1]);
+  if (spanRatio > 0.78) {
+    return "long-range";
+  }
+  if (spanRatio > 0.58) {
+    return "efficient";
+  }
+  if (spanRatio < 0.3) {
+    return "compact";
+  }
+  return "balanced";
+}
+
+function inferRangePackage(design: AircraftStudioDesign): RangePackage {
+  const limits = DESIGN_CATEGORY_LIMITS[design.category];
+  const totalFuel = design.wing.wingFuelVolumeM3 + design.fuelSystem.centerTankVolumeM3 + design.fuelSystem.auxiliaryTankVolumeM3;
+  const ratio = totalFuel / Math.max(1, limits.fuelVolumeM3[1] * 1.28);
+  if (ratio > 0.78) {
+    return "maximum";
+  }
+  if (ratio > 0.58) {
+    return "long";
+  }
+  if (ratio < 0.34) {
+    return "short";
+  }
+  return "balanced";
+}
+
+function inferSafetyStandard(design: AircraftStudioDesign): SafetyStandard {
+  if (design.systems.reliabilityGoal >= 88 || design.systems.redundancy === "triple-redundant") {
+    return "flagship";
+  }
+  if (design.systems.reliabilityGoal >= 80 || design.systems.redundancy === "enhanced") {
+    return "high-reliability";
+  }
+  if (design.systems.reliabilityGoal >= 68 || design.systems.redundancy === "standard") {
+    return "airline-standard";
+  }
+  return "basic";
+}
+
+function cabinMixShares(category: AircraftCategory, mix: CabinMix): Record<CabinClass, number> {
+  if (category === "regional-jet") {
+    return {
+      economy: mix === "executive" ? 0.58 : mix === "premium-heavy" ? 0.72 : mix === "standard" ? 0.86 : 1,
+      "premium-economy": mix === "executive" ? 0.05 : mix === "premium-heavy" ? 0.1 : mix === "standard" ? 0.08 : 0,
+      business: mix === "executive" ? 0.37 : mix === "premium-heavy" ? 0.18 : mix === "standard" ? 0.06 : 0,
+      first: 0
+    };
+  }
+  if (category === "wide-body") {
+    return {
+      economy: mix === "executive" ? 0.45 : mix === "premium-heavy" ? 0.62 : mix === "standard" ? 0.78 : 0.9,
+      "premium-economy": mix === "executive" ? 0.1 : mix === "premium-heavy" ? 0.12 : mix === "standard" ? 0.08 : 0.06,
+      business: mix === "executive" ? 0.32 : mix === "premium-heavy" ? 0.2 : mix === "standard" ? 0.11 : 0.035,
+      first: mix === "executive" ? 0.13 : mix === "premium-heavy" ? 0.06 : mix === "standard" ? 0.03 : 0.005
+    };
+  }
+  return {
+    economy: mix === "executive" ? 0.5 : mix === "premium-heavy" ? 0.68 : mix === "standard" ? 0.82 : 0.94,
+    "premium-economy": mix === "executive" ? 0.1 : mix === "premium-heavy" ? 0.12 : mix === "standard" ? 0.08 : 0.04,
+    business: mix === "executive" ? 0.3 : mix === "premium-heavy" ? 0.16 : mix === "standard" ? 0.08 : 0.02,
+    first: mix === "executive" ? 0.1 : mix === "premium-heavy" ? 0.04 : mix === "standard" ? 0.02 : 0
+  };
+}
+
+function allocateCabinSeats(targetSeats: number, shares: Record<CabinClass, number>): Record<CabinClass, number> {
+  const seats: Record<CabinClass, number> = {
+    economy: 0,
+    "premium-economy": 0,
+    business: 0,
+    first: 0
+  };
+  let assigned = 0;
+  for (const cabinClass of ["premium-economy", "business", "first"] as CabinClass[]) {
+    seats[cabinClass] = Math.max(0, Math.round(targetSeats * shares[cabinClass]));
+    assigned += seats[cabinClass];
+  }
+  seats.economy = Math.max(0, targetSeats - assigned);
+  return seats;
+}
+
+function cabinSeatStandard(cabinClass: CabinClass, comfort: ComfortStandard): { widthM: number; pitchM: number } {
+  const defaults = CABIN_CLASS_DEFAULTS[cabinClass];
+  const widthShift = comfort === "comfortable" ? 0.03 : comfort === "dense" ? -0.01 : 0;
+  const pitchShift = comfort === "comfortable" ? 0.09 : comfort === "dense" ? -0.04 : 0;
+  return {
+    widthM: roundToStep(defaults.seatWidthM + widthShift, 0.01),
+    pitchM: roundToStep(defaults.seatPitchM + pitchShift, 0.01)
+  };
+}
+
+function seatsAcrossForZone(category: AircraftCategory, cabinClass: CabinClass, comfort: ComfortStandard): number {
+  if (category === "wide-body") {
+    if (cabinClass === "economy") {
+      return comfort === "comfortable" ? 8 : 9;
+    }
+    if (cabinClass === "premium-economy") {
+      return 8;
+    }
+    return cabinClass === "business" ? 6 : 4;
+  }
+  if (category === "narrow-body") {
+    if (cabinClass === "economy" || cabinClass === "premium-economy") {
+      return comfort === "comfortable" ? 5 : 6;
+    }
+    return 4;
+  }
+  if (cabinClass === "business") {
+    return 3;
+  }
+  if (cabinClass === "first") {
+    return 2;
+  }
+  return 4;
+}
+
+function cabinLayoutPattern(category: AircraftCategory, cabinClass: CabinClass, seatsAcross: number): string {
+  if (category === "wide-body") {
+    if (seatsAcross === 9) {
+      return "3-3-3";
+    }
+    if (seatsAcross === 8) {
+      return cabinClass === "economy" ? "2-4-2" : "2-4-2";
+    }
+    if (seatsAcross === 6) {
+      return "2-2-2";
+    }
+    return "1-2-1";
+  }
+  if (category === "narrow-body") {
+    if (seatsAcross === 6) {
+      return "3-3";
+    }
+    if (seatsAcross === 5) {
+      return "2-3";
+    }
+    return "2-2";
+  }
+  if (seatsAcross === 4) {
+    return "2-2";
+  }
+  if (seatsAcross === 3) {
+    return "1-2";
+  }
+  return "1-1";
+}
+
+function requiredSimplifiedCabinWidth(
+  category: AircraftCategory,
+  zone: AircraftStudioDesign["cabin"]["zones"][number],
+  aisleCount: number,
+  aisleWidthM: number
+): number {
+  if (zone.zoneLengthM <= 0 || zone.seatsAcross <= 0) {
+    return 0;
+  }
+  const sideClearance = category === "wide-body" ? 0.32 : category === "narrow-body" ? 0.27 : 0.22;
+  return zone.seatsAcross * zone.seatWidthM + aisleCount * aisleWidthM + sideClearance;
+}
+
+function cabinServiceLength(
+  lavatoryCount: number,
+  galleyCount: number,
+  galleySizeM2: number,
+  storageAreaM2: number,
+  crewRestAreaM2: number
+): number {
+  return lavatoryCount * 0.48 + galleyCount * 0.55 + galleySizeM2 * 0.08 + storageAreaM2 * 0.08 + crewRestAreaM2 * 0.16;
+}
+
+function mtowRange(category: AircraftCategory): [number, number] {
+  if (category === "regional-jet") {
+    return [28_000, 52_000];
+  }
+  if (category === "wide-body") {
+    return [155_000, 360_000];
+  }
+  return [52_000, 115_000];
+}
+
+function interpolate(min: number, max: number, factor: number): number {
+  return min + (max - min) * clamp(factor, 0, 1);
+}
+
+function normalizeBetween(value: number, min: number, max: number): number {
+  return clamp((value - min) / Math.max(1, max - min), 0, 1);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampToStep(value: number, min: number, max: number, step: number): number {
+  return roundToStep(clamp(value, min, max), step);
+}
+
+function roundToStep(value: number, step: number): number {
+  return Math.round(value / step) * step;
 }
 
 function createOpeningDesignInput(state: GameState): AircraftStudioDesign {
